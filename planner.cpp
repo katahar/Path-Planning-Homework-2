@@ -17,6 +17,8 @@
 #include <fstream> // For reading/writing files
 #include <assert.h> 
 
+#include "kataArmPlanner.h"
+
 /* Input Arguments */
 #define	MAP_IN      prhs[0]
 #define	ARMSTART_IN	prhs[1]
