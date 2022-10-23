@@ -12,6 +12,202 @@
 #include <iostream> // cout, endl
 #include <fstream> // For reading/writing files
 #include <assert.h> 
+#include <iterator>
+#include <algorithm>    // std::min
+
+
+class arm_state
+{
+    protected:
+        int DOF; 
+        std::vector<double> state;
+        bool is_goal = false;
+        
+        int num_neighbors = 0;
+        std::vector<arm_state*> connected_neighbors;
+
+    public: 
+
+        arm_state()
+        {
+            //nothing
+        }
+
+        arm_state(int dof, double* anglesV_rad)
+        {
+            init(dof);
+            for(int i = 0; i < dof; ++i)
+            {
+                this->state.push_back(anglesV_rad[i]);
+            }   
+        }
+
+        arm_state(int DOF)
+        {
+            init(DOF);
+        }
+
+        arm_state(std::vector<double> input_state)
+        {
+            init((input_state.size()));
+            for(int i = 0; i < input_state.size(); ++i)
+            {
+                state.push_back(input_state[i]);
+            }            
+        }
+
+        arm_state(arm_state* original)
+        {
+            init(original->get_dof());
+            this->set_state(original->get_state());
+
+        }
+
+        void init(int dof)
+        {
+            this-> DOF = dof;
+            num_neighbors = 0;
+            if(connected_neighbors.empty())
+            {
+                connected_neighbors.clear();
+            }
+            if(state.empty())
+            {
+                state.clear();
+            }
+        }
+
+        int get_num_neighbors()
+        {
+            return num_neighbors;
+        }
+
+        int get_dof()
+        {
+            return DOF;
+        }
+
+        std::vector<double> get_state()
+        {
+            return state;
+        }
+
+        void set_state(std::vector<double> input_state)
+        {
+            int dof = input_state.size();
+            init(dof);
+            for(int i = 0; i < dof; ++i)
+            {
+                this->state.push_back(input_state[i]);
+            }   
+        }
+
+        double get_angle(int index)
+        {
+            if(index<DOF)
+            {
+                return state[index];
+            }
+            return -10000.0;
+        }
+
+        std::vector<arm_state*> get_connected_neighbors()
+        {
+            return this->connected_neighbors;
+        }
+
+        arm_state* get_neighbor(int index)
+        {
+            if(index<num_neighbors)
+            {
+                return connected_neighbors[index];
+            }
+            else
+            {
+                return this;
+            }
+        }
+
+        int add_neighbor(arm_state* new_neighbor)
+        {
+            connected_neighbors.push_back(new_neighbor);
+            ++num_neighbors;
+            return num_neighbors;
+        }
+
+        double get_dist(arm_state* input_state)
+        {
+            if(this->DOF == input_state->DOF)
+            {
+                double sum = 0;
+                for(int i = 0; i < DOF; ++i)
+                {
+                    sum+=std::pow((this->get_angle(i) - input_state->get_angle(i)), 2);
+                }
+                sum = sqrt(sum);
+                return sum;
+            }
+            return -2.0;
+        }
+       
+        arm_state* get_ptr()
+        {
+            return this;
+        }
+
+        std::vector<double> get_component_distance(arm_state* input_state)
+        {
+            std::vector<double> difference; 
+            for(int i = 0; i < state.size(); ++i)
+            {
+                difference.push_back(input_state->get_angle(i)-this->get_angle(i));
+            }
+            return difference;
+        }
+
+        std::vector<double> get_component_distance(arm_state* input_state, double divisor)
+        {
+            std::vector<double> difference; 
+            for(int i = 0; i < state.size(); ++i)
+            {
+                difference.push_back((this->get_angle(i)-input_state->get_angle(i))/divisor);
+            }
+            return difference;
+        }
+
+        void add_unit(std::vector<double> unit_step)
+        {
+            for(int i = 0; i < DOF; ++i)
+            {
+                this->state[i] = this->state[i] + unit_step[i]; 
+            }
+        }
+        
+        void set_is_goal(bool is_goal)
+        {
+            this->is_goal = is_goal;
+        }
+
+        void set_is_goal()
+        {
+            this->is_goal = true;
+        }
+
+        bool get_is_goal()
+        {
+            return this->is_goal;
+        }
+
+        void print()
+        {
+            for(int i = 0; i < DOF; i++)
+            {
+                std::cout << state[i] << "  "; 
+            }
+            std::cout<< " " << std::endl;
+
+        }
+};
 
 
 class base_planner
@@ -25,6 +221,11 @@ class base_planner
         arm_state* start_state;
         double*** plan;
         int* planlength;
+       
+        #define PI 3.141592654
+        //the length of each link in the arm
+        #define LINKLENGTH_CELLS 10
+        #define GETMAPINDEX(X, Y, XSIZE, YSIZE) (Y*XSIZE + X)
 
     public:
         base_planner(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
@@ -40,22 +241,29 @@ class base_planner
                 this->planlength = planlength;
 
                 /* initialize random seed: */
-                std::srand(time(NULL));
+                // std::srand(time(NULL));
+                std::srand(1000);
 
             }
 
+        
         arm_state* gen_rand_state()
         {
-            std::vector<double> rand_angles;
-            for(int i = 0; i < DOFs; ++i)
+            if(std::rand()%10 < 3)
             {
-                rand_angles.push_back(2*3.14159*(std::rand()%1000)/1000); //generates a number in [0,2pi), up to 3 decimal places
+                return goal_state;
             }
-            arm_state* generated_state = new arm_state(rand_angles);
-            return generated_state;
+            else
+            {
+                std::vector<double> rand_angles;
+                for(int i = 0; i < DOFs; ++i)
+                {
+                    rand_angles.push_back((2*PI*(rand()%1000)/1000)); //generates a number in [0,2pi), up to 3 decimal places
+                }
+                arm_state* generated_state = new arm_state(rand_angles);
+                return generated_state;
+            }
         }
-
-
 
         //===================Pulled from assignment for checking validity================================
         typedef struct {
@@ -70,18 +278,14 @@ class base_planner
             int Flipped;
         } bresenham_param_t;
         
-        
-        #define PI 3.141592654
-        //the length of each link in the arm
-        #define LINKLENGTH_CELLS 10
-        #define GETMAPINDEX(X, Y, XSIZE, YSIZE) (Y*XSIZE + X)
+ 
 
-        int IsValidArmConfiguration(arm_state* state)
+        bool IsValidArmConfiguration(arm_state* state)
         {
-            IsValidArmConfiguration(state, DOFs,map,x_size,y_size);
+            return IsValidArmConfiguration(state, DOFs,map,x_size,y_size);
         }
 
-        int IsValidArmConfiguration(arm_state* state, int numofDOFs, double*	map,
+        bool IsValidArmConfiguration(arm_state* state, int numofDOFs, double*	map,
                     int x_size, int y_size) {
             double x0,y0,x1,y1;
             int i;
@@ -103,7 +307,34 @@ class base_planner
             return 1;
         }
        
-        int IsValidLineSegment(double x0, double y0, double x1, double y1, double*	map,
+        bool IsValidArmConfiguration(std::vector<double> state)
+        {
+            return IsValidArmConfiguration(state, DOFs,map,x_size,y_size);
+        }
+
+        bool IsValidArmConfiguration(std::vector<double> state, int numofDOFs, double*	map,
+                    int x_size, int y_size) {
+            double x0,y0,x1,y1;
+            int i;
+                
+            //iterate through all the links starting with the base
+            x1 = ((double)x_size)/2.0;
+            y1 = 0;
+            for(i = 0; i < numofDOFs; i++){
+                //compute the corresponding line segment
+                x0 = x1;
+                y0 = y1;
+                x1 = x0 + LINKLENGTH_CELLS*cos(2*PI-state[i]);
+                y1 = y0 - LINKLENGTH_CELLS*sin(2*PI-state[i]);
+
+                //check the validity of the corresponding line segment
+                if(!IsValidLineSegment(x0,y0,x1,y1,map,x_size,y_size))
+                    return 0;
+            }    
+            return 1;
+        }
+
+        bool IsValidLineSegment(double x0, double y0, double x1, double y1, double*	map,
 			 int x_size, int y_size) {
             bresenham_param_t params;
             int nX, nY; 
@@ -208,14 +439,30 @@ class base_planner
             params->YIndex = params->Y1;
         }
 
+        void ContXY2Cell(double x, double y, short unsigned int* pX, short unsigned int *pY, int x_size, int y_size) {
+            double cellsize = 1.0;
+            //take the nearest cell
+            *pX = (int)(x/(double)(cellsize));
+            if( x < 0) *pX = 0;
+            if( *pX >= x_size) *pX = x_size-1;
+
+            *pY = (int)(y/(double)(cellsize));
+            if( y < 0) *pY = 0;
+            if( *pY >= y_size) *pY = y_size-1;
+        }
+
 };
 
 
 class rrt:base_planner
 {
     protected:
-        double epsillon;
+        double epsillon = PI;
+        int steps = 5; //number of intermediate steps along epsillon that are checked for collision
         std::vector<arm_state*> tree;
+        bool goal_found = false;
+
+        double min_dist = 1000000;
 
     public:
         
@@ -228,15 +475,130 @@ class rrt:base_planner
 
         void build_rrt()
         {
-            for(int i = 0; i < 100; i++)
+            std::cout << "\t Target state:  ";
+            goal_state->print();
+
+            for(int i = 0; i < 1000000; i++)
             {
+                if(i%10000 == 0)
+                {
+                    std::cout << "expanding tree iteration " << i << std::endl;
+                }
                 extend_tree(gen_rand_state());
+                if(i%10000 == 0)
+                {
+                    std::cout << "\t new tree size " << tree.size() << std::endl;
+                    std::cout << "\tMinimum distance to goal so far: " << min_dist << std::endl;
+                    std::cout << "\t Last added state:  ";
+                    tree.back()->print();
+                }
+                if(goal_found)
+                {
+                    std::cout << "\t\tGoal found! \n" <<std::endl;
+                    break;
+                }
             }
         } 
 
-        void extend_tree(arm_state* input)
+        void wrap_to_2pi(std::vector<double> &input_state)
         {
-            arm_state* nearest = find_nearest(input);
+            for(int i = 0; i < input_state.size(); ++i)
+            {
+                if(input_state[i] > 2*PI )
+                {
+                    input_state[i] = input_state[i] - (2*PI);
+                }
+                else if(input_state[i] < 0 )
+                {
+                    input_state[i] = input_state[i] + (2*PI);
+                }
+            }
+        }
+
+        void extend_tree(arm_state* rand_input)
+        {
+            arm_state* nearest = find_nearest(rand_input);
+            std::vector<double> unit_step = get_unit_step(nearest,rand_input);
+            
+            std::vector<double> nearest_state = nearest->get_state(); 
+            std::vector<double> last_valid = nearest->get_state();
+            std::vector<double> temp_state = nearest->get_state();
+            
+            for(int i = 0; i < steps; ++i)
+            {
+                std::transform (temp_state.begin(), temp_state.end(), unit_step.begin(), temp_state.begin(), std::plus<double>());    //check for collision
+                // wrap_to_2pi(temp_state);
+                if(IsValidArmConfiguration(temp_state))
+                {
+                    // std::cout << "\t\tThis is a valid config. \n" <<std::endl;
+                    // last_valid = temp_state;
+                    last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
+                    if(is_goal_state(last_valid))
+                    {
+                        std::cout<< "1 GOAL FOUND ______________________________" << std::endl;
+
+                        break;
+                    }
+                    
+                }
+                else
+                {
+                    // std::cout << "\t\tNOT VALID \n" <<std::endl;
+                    break;
+                }
+            }
+            
+            if(!std::equal(nearest_state.begin(), nearest_state.end(), last_valid.begin()) )//meaning that we could successfully move
+            {
+                arm_state* new_state = new arm_state(last_valid);
+
+                min_dist = std::min(min_dist,goal_state->get_dist(new_state));
+
+                new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+                nearest->add_neighbor(new_state);
+
+                if(is_goal_state(new_state))
+                {
+                    new_state->set_is_goal();
+                    goal_found = true;
+                }
+
+                tree.push_back(new_state);
+
+            }
+
+        }
+
+        bool is_goal_state(std::vector<double> state) // pulled from equalDoubleArrays in planner.cpp
+        {
+            for (int i = 0; i < state.size(); ++i) {
+                if (abs(state[i]-goal_state->get_angle(i)) > 1e-3) 
+                {
+                    return false;
+                }
+            }
+            std::cout<< "GOAL FOUND ______________________________" << std::endl;
+            return true;
+        }
+
+        bool is_goal_state(arm_state* input_state) // pulled from equalDoubleArrays in planner.cpp
+        {
+            for (int i = 0; i < input_state->get_dof(); ++i) {
+                if (abs(input_state->get_angle(i)-goal_state->get_angle(i)) > 1e-3) 
+                {
+                    return false;
+                }
+            }
+            std::cout<< "GOAL FOUND ______________________________" << std::endl;
+            return true;
+        }
+
+        std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
+        {
+            double distance = start_state->get_dist(rand_input);
+            double unit_div_factor = distance/(epsillon/steps); //used to determine what to divide the difference between the two states by to find the unit step 
+            std::vector<double> unit_step = start_state->get_component_distance(rand_input, unit_div_factor);
+            return unit_step;
         }
 
         arm_state* find_nearest(arm_state* input)
@@ -257,118 +619,3 @@ class rrt:base_planner
         }
 };
 
-class arm_state
-{
-    protected:
-        int DOF; 
-        std::vector<double> state;
-        
-        int num_neighbors = 0;
-        std::vector<arm_state*> connected_neighbors;
-
-    public: 
-
-        arm_state()
-        {
-            //nothing
-        }
-
-        arm_state(int dof, double* anglesV_rad)
-        {
-            init(dof);
-            for(int i = 0; i < dof; ++i)
-            {
-                state.push_back(anglesV_rad[i]);
-            }   
-        }
-
-        arm_state(int DOF)
-        {
-            init(DOF);
-        }
-
-        arm_state(std::vector<double> input_state)
-        {
-            init((input_state.size()));
-            for(int i = 0; i < input_state.size(); ++i)
-            {
-                state.push_back(input_state[i]);
-            }            
-        }
-
-        void init(int dof)
-        {
-            this-> DOF = dof;
-            num_neighbors = 0;
-            if(connected_neighbors.empty())
-            {
-                connected_neighbors.clear();
-            }
-            if(state.empty())
-            {
-                state.clear();
-            }
-        }
-
-        int get_num_neighbors()
-        {
-            return num_neighbors;
-        }
-
-        std::vector<double> get_state()
-        {
-        return state;
-        }
-
-        double get_angle(int index)
-        {
-            if(index<DOF)
-            {
-                return state[index];
-            }
-            return -10000.0;
-        }
-
-        std::vector<arm_state*> get_connected_neighbors()
-        {
-            return this->connected_neighbors;
-        }
-
-        arm_state* get_neighbor(int index)
-        {
-            if(index<num_neighbors)
-            {
-                return connected_neighbors[index];
-            }
-            else
-            {
-                return this;
-            }
-        }
-
-        int add_neighbor(arm_state* new_neighbor)
-        {
-            connected_neighbors.push_back(new_neighbor);
-            ++num_neighbors;
-            return num_neighbors;
-        }
-
-        double get_dist(arm_state* input_state)
-        {
-            if(this->DOF == input_state->DOF)
-            {
-                double sum = 0;
-                for(int i = 0; i < DOF; ++i)
-                {
-                    sum+=std::pow((this->get_angle(i) - input_state->get_angle(i)), 2);
-                }
-                sum = sqrt(sum);
-                return sum;
-            }
-            return -2.0;
-        }
-        arm_state* get_ptr()
-        {
-            return this;
-        }
-};
