@@ -170,7 +170,7 @@ class arm_state
             std::vector<double> difference; 
             for(int i = 0; i < state.size(); ++i)
             {
-                difference.push_back((this->get_angle(i)-input_state->get_angle(i))/divisor);
+                difference.push_back((input_state->get_angle(i)-this->get_angle(i))/divisor); //reversed this and finds goal?
             }
             return difference;
         }
@@ -243,13 +243,13 @@ class base_planner
                 /* initialize random seed: */
                 // std::srand(time(NULL));
                 std::srand(1000);
-
             }
 
         
         arm_state* gen_rand_state()
         {
-            if(std::rand()%10 < 3)
+            if(std::rand()%10 == 1)
+            // if(false)
             {
                 return goal_state;
             }
@@ -277,8 +277,6 @@ class base_planner
             int XIndex, YIndex;
             int Flipped;
         } bresenham_param_t;
-        
- 
 
         bool IsValidArmConfiguration(arm_state* state)
         {
@@ -457,15 +455,13 @@ class base_planner
 class rrt:base_planner
 {
     protected:
-        double epsillon = PI;
-        int steps = 5; //number of intermediate steps along epsillon that are checked for collision
+        double epsillon = 2*PI;
+        int steps = 15; //number of intermediate steps along epsillon that are checked for collision
         std::vector<arm_state*> tree;
         bool goal_found = false;
-
         double min_dist = 1000000;
 
     public:
-        
         rrt(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
             int numofDOFs, double*** plan, int* planlength):
             base_planner(map, x_size, y_size,armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength)
@@ -478,13 +474,15 @@ class rrt:base_planner
             std::cout << "\t Target state:  ";
             goal_state->print();
 
-            for(int i = 0; i < 1000000; i++)
+            for(int i = 0; i < 100000; i++)
             {
                 if(i%10000 == 0)
                 {
                     std::cout << "expanding tree iteration " << i << std::endl;
                 }
+               
                 extend_tree(gen_rand_state());
+               
                 if(i%10000 == 0)
                 {
                     std::cout << "\t new tree size " << tree.size() << std::endl;
@@ -494,10 +492,12 @@ class rrt:base_planner
                 }
                 if(goal_found)
                 {
-                    std::cout << "\t\tGoal found! \n" <<std::endl;
+                    std::cout << "\t\tGoal found! Iteration: "<< i << "\n" <<std::endl;
                     break;
                 }
             }
+
+
         } 
 
         void wrap_to_2pi(std::vector<double> &input_state)
@@ -527,12 +527,12 @@ class rrt:base_planner
             for(int i = 0; i < steps; ++i)
             {
                 std::transform (temp_state.begin(), temp_state.end(), unit_step.begin(), temp_state.begin(), std::plus<double>());    //check for collision
-                // wrap_to_2pi(temp_state);
+                wrap_to_2pi(temp_state);
                 if(IsValidArmConfiguration(temp_state))
                 {
                     // std::cout << "\t\tThis is a valid config. \n" <<std::endl;
-                    // last_valid = temp_state;
-                    last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
+                    last_valid = temp_state;
+                    // last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
                     if(is_goal_state(last_valid))
                     {
                         std::cout<< "1 GOAL FOUND ______________________________" << std::endl;
@@ -596,7 +596,9 @@ class rrt:base_planner
         std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
         {
             double distance = start_state->get_dist(rand_input);
-            double unit_div_factor = distance/(epsillon/steps); //used to determine what to divide the difference between the two states by to find the unit step 
+            double unit_div_factor = distance/epsillon; // divide each unit by this value to get one step of epsillon.
+            unit_div_factor = unit_div_factor*steps; //further divide into the substeps on the way to epsillon.
+            // unit_div_factor = distance/(epsillon/steps); //used to determine what to divide the difference between the two states by to find the unit step 
             std::vector<double> unit_step = start_state->get_component_distance(rand_input, unit_div_factor);
             return unit_step;
         }
