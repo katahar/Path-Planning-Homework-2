@@ -14,6 +14,7 @@
 #include <assert.h> 
 #include <iterator>
 #include <algorithm>    // std::min
+#include <assert.h>     /* assert */
 
 
 class arm_state
@@ -108,6 +109,7 @@ class arm_state
             {
                 return state[index];
             }
+            std::cout << "INVAID INDEX" << std::endl;
             return -10000.0;
         }
 
@@ -137,6 +139,8 @@ class arm_state
 
         double get_dist(arm_state* input_state)
         {
+            assert (this->DOF == input_state->DOF);
+
             if(this->DOF == input_state->DOF)
             {
                 double sum = 0;
@@ -147,6 +151,7 @@ class arm_state
                 sum = sqrt(sum);
                 return sum;
             }
+            std::cout<< "INVALID DOF " <<std::endl;
             return -2.0;
         }
        
@@ -155,22 +160,22 @@ class arm_state
             return this;
         }
 
-        std::vector<double> get_component_distance(arm_state* input_state)
+        std::vector<double> get_component_distance(arm_state* rand_state)
         {
             std::vector<double> difference; 
             for(int i = 0; i < state.size(); ++i)
             {
-                difference.push_back(input_state->get_angle(i)-this->get_angle(i));
+                difference.push_back(rand_state->get_angle(i)-this->get_angle(i));
             }
             return difference;
         }
 
-        std::vector<double> get_component_distance(arm_state* input_state, double divisor)
+        std::vector<double> get_component_distance(arm_state* rand_state, double divisor)
         {
             std::vector<double> difference; 
             for(int i = 0; i < state.size(); ++i)
             {
-                difference.push_back((this->get_angle(i)-input_state->get_angle(i))/divisor);
+                difference.push_back((rand_state->get_angle(i)-this->get_angle(i))/divisor); //reversed this and finds goal?
             }
             return difference;
         }
@@ -243,13 +248,13 @@ class base_planner
                 /* initialize random seed: */
                 // std::srand(time(NULL));
                 std::srand(1000);
-
             }
 
         
         arm_state* gen_rand_state()
         {
-            if(std::rand()%10 < 3)
+            if(std::rand()%10 == 1)
+            // if(false)
             {
                 return goal_state;
             }
@@ -277,8 +282,6 @@ class base_planner
             int XIndex, YIndex;
             int Flipped;
         } bresenham_param_t;
-        
- 
 
         bool IsValidArmConfiguration(arm_state* state)
         {
@@ -457,15 +460,13 @@ class base_planner
 class rrt:base_planner
 {
     protected:
-        double epsillon = PI;
-        int steps = 5; //number of intermediate steps along epsillon that are checked for collision
+        double epsillon = 1.2;
+        int steps = 10; //number of intermediate steps along epsillon that are checked for collision
         std::vector<arm_state*> tree;
         bool goal_found = false;
-
         double min_dist = 1000000;
 
     public:
-        
         rrt(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
             int numofDOFs, double*** plan, int* planlength):
             base_planner(map, x_size, y_size,armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength)
@@ -478,23 +479,26 @@ class rrt:base_planner
             std::cout << "\t Target state:  ";
             goal_state->print();
 
-            for(int i = 0; i < 1000000; i++)
+            for(int i = 0; i < 100000; i++)
             {
                 if(i%10000 == 0)
                 {
                     std::cout << "expanding tree iteration " << i << std::endl;
                 }
+               
                 extend_tree(gen_rand_state());
+               
                 if(i%10000 == 0)
                 {
                     std::cout << "\t new tree size " << tree.size() << std::endl;
+                    // std::cout << "\t not valid count " << not_valid << std::endl;
                     std::cout << "\tMinimum distance to goal so far: " << min_dist << std::endl;
                     std::cout << "\t Last added state:  ";
                     tree.back()->print();
                 }
                 if(goal_found)
                 {
-                    std::cout << "\t\tGoal found! \n" <<std::endl;
+                    std::cout << "\t\tGoal found! Iteration: "<< i << "\n" <<std::endl;
                     break;
                 }
             }
@@ -515,6 +519,8 @@ class rrt:base_planner
             }
         }
 
+        int not_valid = 0;
+
         void extend_tree(arm_state* rand_input)
         {
             arm_state* nearest = find_nearest(rand_input);
@@ -524,15 +530,54 @@ class rrt:base_planner
             std::vector<double> last_valid = nearest->get_state();
             std::vector<double> temp_state = nearest->get_state();
             
+            // std::cout << "Random state:" << std::endl;
+            // std::cout << "\t" ;
+            // for(int i = 0; i < rand_input->get_dof(); ++i)
+            // {
+            //     std::cout << rand_input->get_angle(i) << " ";
+            // }
+            // std::cout << "  " << std::endl;
+
+            // std::cout << "nearest state:" << std::endl;
+            // std::cout << "\t" ;
+            // for(int i = 0; i < nearest->get_dof(); ++i)
+            // {
+            //     std::cout << nearest->get_angle(i) << " ";
+            // }
+            // std::cout << "  " << std::endl;
+
+
+            // std::cout << "unit step: " << std::endl;
+            // std::cout << "\t" ;
+            // for(int i = 0; i < unit_step.size(); ++i)
+            // {
+            //     std::cout << unit_step[i] << " ";
+            // }
+            // std::cout << "\n-------------------------" << std::endl;
+
+
+
+
+
+
+
             for(int i = 0; i < steps; ++i)
             {
-                std::transform (temp_state.begin(), temp_state.end(), unit_step.begin(), temp_state.begin(), std::plus<double>());    //check for collision
+                // std::transform (temp_state.begin(), temp_state.end(), unit_step.begin(), temp_state.begin(), std::plus<double>());    //check for collision
                 // wrap_to_2pi(temp_state);
+
+                
+                for(int i = 0; i < temp_state.size(); ++i)
+                {
+                    temp_state[i] += unit_step[i];
+                }
+
                 if(IsValidArmConfiguration(temp_state))
                 {
                     // std::cout << "\t\tThis is a valid config. \n" <<std::endl;
-                    // last_valid = temp_state;
-                    last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
+                    last_valid = temp_state;
+                    // last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
+                    
                     if(is_goal_state(last_valid))
                     {
                         std::cout<< "1 GOAL FOUND ______________________________" << std::endl;
@@ -566,6 +611,10 @@ class rrt:base_planner
                 tree.push_back(new_state);
 
             }
+            else
+            {
+                not_valid++;
+            }
 
         }
 
@@ -596,8 +645,31 @@ class rrt:base_planner
         std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
         {
             double distance = start_state->get_dist(rand_input);
-            double unit_div_factor = distance/(epsillon/steps); //used to determine what to divide the difference between the two states by to find the unit step 
-            std::vector<double> unit_step = start_state->get_component_distance(rand_input, unit_div_factor);
+            //add check to just add directly if smaller than epsillon
+            // std::cout <<"\tDistance: " << distance << " Epsillon: " << epsillon << " steps: " << steps << std::endl;
+            // double unit_div_factor = distance/epsillon; // divide each unit by this value to get one step of epsillon.
+            // unit_div_factor = unit_div_factor*steps; //further divide into the substeps on the way to epsillon.
+            // unit_div_factor = distance/(epsillon/steps); //used to determine what to divide the difference between the two states by to find the unit step 
+            std::vector<double> unit_step = start_state->get_component_distance(rand_input);
+
+            // std::cout<< "Initial" << "\t" << "Scaled down" << std::endl;
+
+            if(distance > epsillon)
+            {
+                for(int i = 0; i < unit_step.size(); ++i)
+                {
+                    // std::cout<<  unit_step[i] << "\t" << unit_step[i]*(epsillon/distance)/steps << std::endl;
+                    unit_step[i]=(unit_step[i]*(epsillon/distance))/steps;
+                }
+            }
+            else
+            {
+                for(int i = 0; i < unit_step.size(); ++i)
+                {
+                    unit_step[i]=unit_step[i]/steps;
+                }
+            }
+
             return unit_step;
         }
 
