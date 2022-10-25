@@ -20,7 +20,8 @@
 class arm_state
 {
     protected:
-        int DOF; 
+        int DOF;
+        int step_num = 0; 
         std::vector<double> state;
         bool is_goal = false;
         
@@ -28,7 +29,6 @@ class arm_state
         std::vector<arm_state*> connected_neighbors;
 
     public: 
-
         arm_state()
         {
             //nothing
@@ -212,6 +212,16 @@ class arm_state
             std::cout<< " " << std::endl;
 
         }
+
+        int get_step_num()
+        {
+            return this->step_num;
+        }
+
+        void set_step_num(int input)
+        {
+            this->step_num = input;
+        }
 };
 
 
@@ -228,8 +238,7 @@ class base_planner
         int* planlength;
        
         #define PI 3.141592654
-        //the length of each link in the arm
-        #define LINKLENGTH_CELLS 10
+        #define LINKLENGTH_CELLS 10 //the length of each link in the arm
         #define GETMAPINDEX(X, Y, XSIZE, YSIZE) (Y*XSIZE + X)
 
     public:
@@ -249,7 +258,6 @@ class base_planner
                 // std::srand(time(NULL));
                 std::srand(1000);
             }
-
         
         arm_state* gen_rand_state()
         {
@@ -268,6 +276,30 @@ class base_planner
                 arm_state* generated_state = new arm_state(rand_angles);
                 return generated_state;
             }
+        }
+        
+        bool is_goal_state(std::vector<double> state) // pulled from equalDoubleArrays in planner.cpp
+        {
+            for (int i = 0; i < state.size(); ++i) {
+                if (abs(state[i]-goal_state->get_angle(i)) > 1e-3) 
+                {
+                    return false;
+                }
+            }
+            // std::cout<< "GOAL FOUND ______________________________" << std::endl;
+            return true;
+        }
+
+        bool is_goal_state(arm_state* input_state) // pulled from equalDoubleArrays in planner.cpp
+        {
+            for (int i = 0; i < input_state->get_dof(); ++i) {
+                if (abs(input_state->get_angle(i)-goal_state->get_angle(i)) > 1e-3) 
+                {
+                    return false;
+                }
+            }
+            // std::cout<< "GOAL FOUND ______________________________" << std::endl;
+            return true;
         }
 
         //===================Pulled from assignment for checking validity================================
@@ -491,35 +523,17 @@ class rrt:base_planner
                 if(i%10000 == 0)
                 {
                     std::cout << "\t new tree size " << tree.size() << std::endl;
-                    // std::cout << "\t not valid count " << not_valid << std::endl;
                     std::cout << "\tMinimum distance to goal so far: " << min_dist << std::endl;
                     std::cout << "\t Last added state:  ";
                     tree.back()->print();
                 }
                 if(goal_found)
                 {
-                    std::cout << "\t\tGoal found! Iteration: "<< i << "\n" <<std::endl;
+                    std::cout << "\t\tGoal found! Iteration: "<< i << "step number: " << tree.back()->get_step_num() << "\n" <<std::endl;
                     break;
                 }
             }
         } 
-
-        void wrap_to_2pi(std::vector<double> &input_state)
-        {
-            for(int i = 0; i < input_state.size(); ++i)
-            {
-                if(input_state[i] > 2*PI )
-                {
-                    input_state[i] = input_state[i] - (2*PI);
-                }
-                else if(input_state[i] < 0 )
-                {
-                    input_state[i] = input_state[i] + (2*PI);
-                }
-            }
-        }
-
-        int not_valid = 0;
 
         void extend_tree(arm_state* rand_input)
         {
@@ -537,7 +551,6 @@ class rrt:base_planner
             //     std::cout << rand_input->get_angle(i) << " ";
             // }
             // std::cout << "  " << std::endl;
-
             // std::cout << "nearest state:" << std::endl;
             // std::cout << "\t" ;
             // for(int i = 0; i < nearest->get_dof(); ++i)
@@ -545,8 +558,6 @@ class rrt:base_planner
             //     std::cout << nearest->get_angle(i) << " ";
             // }
             // std::cout << "  " << std::endl;
-
-
             // std::cout << "unit step: " << std::endl;
             // std::cout << "\t" ;
             // for(int i = 0; i < unit_step.size(); ++i)
@@ -556,16 +567,9 @@ class rrt:base_planner
             // std::cout << "\n-------------------------" << std::endl;
 
 
-
-
-
-
-
             for(int i = 0; i < steps; ++i)
             {
                 // std::transform (temp_state.begin(), temp_state.end(), unit_step.begin(), temp_state.begin(), std::plus<double>());    //check for collision
-                // wrap_to_2pi(temp_state);
-
                 
                 for(int i = 0; i < temp_state.size(); ++i)
                 {
@@ -584,7 +588,6 @@ class rrt:base_planner
 
                         break;
                     }
-                    
                 }
                 else
                 {
@@ -602,6 +605,8 @@ class rrt:base_planner
                 new_state->add_neighbor(nearest); //adding each other as mutual neighbors
                 nearest->add_neighbor(new_state);
 
+                new_state->set_step_num(nearest->get_step_num()+1);
+
                 if(is_goal_state(new_state))
                 {
                     new_state->set_is_goal();
@@ -611,62 +616,32 @@ class rrt:base_planner
                 tree.push_back(new_state);
 
             }
-            else
-            {
-                not_valid++;
-            }
 
         }
 
-        bool is_goal_state(std::vector<double> state) // pulled from equalDoubleArrays in planner.cpp
-        {
-            for (int i = 0; i < state.size(); ++i) {
-                if (abs(state[i]-goal_state->get_angle(i)) > 1e-3) 
-                {
-                    return false;
-                }
-            }
-            std::cout<< "GOAL FOUND ______________________________" << std::endl;
-            return true;
-        }
-
-        bool is_goal_state(arm_state* input_state) // pulled from equalDoubleArrays in planner.cpp
-        {
-            for (int i = 0; i < input_state->get_dof(); ++i) {
-                if (abs(input_state->get_angle(i)-goal_state->get_angle(i)) > 1e-3) 
-                {
-                    return false;
-                }
-            }
-            std::cout<< "GOAL FOUND ______________________________" << std::endl;
-            return true;
-        }
 
         std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
         {
             double distance = start_state->get_dist(rand_input);
-            //add check to just add directly if smaller than epsillon
             // std::cout <<"\tDistance: " << distance << " Epsillon: " << epsillon << " steps: " << steps << std::endl;
-            // double unit_div_factor = distance/epsillon; // divide each unit by this value to get one step of epsillon.
-            // unit_div_factor = unit_div_factor*steps; //further divide into the substeps on the way to epsillon.
-            // unit_div_factor = distance/(epsillon/steps); //used to determine what to divide the difference between the two states by to find the unit step 
             std::vector<double> unit_step = start_state->get_component_distance(rand_input);
 
             // std::cout<< "Initial" << "\t" << "Scaled down" << std::endl;
 
-            if(distance > epsillon)
+            if(distance > epsillon) //check to directly add the generated state if smaller than epsillon
+
             {
                 for(int i = 0; i < unit_step.size(); ++i)
                 {
                     // std::cout<<  unit_step[i] << "\t" << unit_step[i]*(epsillon/distance)/steps << std::endl;
-                    unit_step[i]=(unit_step[i]*(epsillon/distance))/steps;
+                    unit_step[i]=(unit_step[i]*(epsillon/distance))/steps; // divide each unit by this value to get one step of epsillon. further divide into the substeps on the way to epsillon.
                 }
             }
             else
             {
                 for(int i = 0; i < unit_step.size(); ++i)
                 {
-                    unit_step[i]=unit_step[i]/steps;
+                    unit_step[i]=unit_step[i]/steps; // since the distance is already smaller than epsillon, just divide by steps
                 }
             }
 
