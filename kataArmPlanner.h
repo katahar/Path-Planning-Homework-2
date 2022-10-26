@@ -262,7 +262,6 @@ class base_planner
         arm_state* gen_rand_state()
         {
             if(std::rand()%10 == 1)
-            // if(false)
             {
                 return goal_state;
             }
@@ -497,6 +496,7 @@ class rrt:base_planner
         std::vector<arm_state*> tree;
         bool goal_found = false;
         double min_dist = 1000000;
+        std::vector<arm_state*> plan;
 
     public:
         rrt(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
@@ -529,11 +529,30 @@ class rrt:base_planner
                 }
                 if(goal_found)
                 {
-                    std::cout << "\t\tGoal found! Iteration: "<< i << "step number: " << tree.back()->get_step_num() << "\n" <<std::endl;
+                    std::cout << "\t\tGoal found! Iteration: "<< i << " step number: " << tree.back()->get_step_num() << " tree size: " << tree.size() <<"\n" <<std::endl;
                     break;
                 }
             }
+            
+            plan = generate_plan(tree.back());
+
+            std::cout << "\nStart state: ";
+            start_state->print();
+            // for(int i = plan.size()-1; i >= 0; --i)
+            // {
+            //     plan[i]->print(); //needs to be reversed because is goal to start.
+            // // }
+            std::cout << "End state: ";
+            goal_state->print();
+
+
         } 
+
+        std::vector<arm_state*> get_plan()
+        {
+            return plan;
+        }
+
 
         void extend_tree(arm_state* rand_input)
         {
@@ -619,7 +638,6 @@ class rrt:base_planner
 
         }
 
-
         std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
         {
             double distance = start_state->get_dist(rand_input);
@@ -664,5 +682,43 @@ class rrt:base_planner
             }
             return tree[nearest_index];
         }
+
+        std::vector<arm_state*> generate_plan(arm_state* goal)
+        {
+            std::vector<arm_state*> plan;
+
+            arm_state* current = goal; //the node that will be added to the plan
+            arm_state* temp_neighbor; //the potential neighbor that is being evaluated
+
+            printf("Goal step number: %d\n", goal->get_step_num());
+            for(int i = 0; i < goal->get_step_num(); ++i) //iterating over the size of the plan
+            {
+                // printf("Iteration :%d \n", i);
+                for(int j = 0; j < current->get_num_neighbors(); ++j) //iterating over all potential neighbors
+                {
+                    // printf("\tNeighbor number %d\n",j);
+                    temp_neighbor = current->get_neighbor(j);
+                    if(current->get_step_num()-1 == temp_neighbor->get_step_num()) //neighbor is going closer to the start if the step number decreases by 1
+                    {
+                        // printf("\tFound!\n");
+                        // plan.push_back(current);
+                        plan.insert(plan.begin(), current);
+                        current = temp_neighbor;
+                        current->print();
+                        break;
+                    }
+                    // printf("%s:%d\n", __FUNCTION__,__LINE__);
+                }
+                // printf("%s:%d\n", __FUNCTION__,__LINE__);
+            }
+            // printf("%s:%d\n", __FUNCTION__,__LINE__);
+
+            // printf("last push. ");
+            // plan.push_back(current); // adds the start pose, which isn't strictly necessary.
+            plan.insert(plan.begin(), current);
+            // printf("done. \n");
+            return plan;
+        }
+
 };
 

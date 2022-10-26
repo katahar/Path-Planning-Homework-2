@@ -291,7 +291,9 @@ static void planner(
 			double* armgoal_anglesV_rad,
             int numofDOFs,
             double*** plan,
-            int* planlength)
+            int* planlength,
+			int whichPlanner=0  //defaulting to RRT
+			)
 {
 	//no plan by default
 	*plan = NULL;
@@ -326,6 +328,20 @@ static void planner(
 
 	rrt rrt_planner = rrt(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
 	rrt_planner.build_rrt();
+	std::vector<arm_state*> RRT_plan = rrt_planner.get_plan();
+	
+	*planlength = RRT_plan.size();
+	*plan = (double**) malloc(RRT_plan.size()*sizeof(double*));
+    for (int i = 0; i < RRT_plan.size(); i++)
+	{
+        (*plan)[i] = (double*) malloc(numofDOFs*sizeof(double)); 
+        for(int j = 0; j < numofDOFs; j++)
+		{
+            (*plan)[i][j] = RRT_plan[i]->get_angle(j);
+        }
+	}
+	
+	std::cout << "Done. " << std::endl;
     
     return;
 }
@@ -363,7 +379,7 @@ int main(int argc, char** argv) {
 
 	double** plan = NULL;
 	int planlength = 0;
-	planner(map, x_size, y_size, startPos, goalPos, numOfDOFs, &plan, &planlength);
+	planner(map, x_size, y_size, startPos, goalPos, numOfDOFs, &plan, &planlength, whichPlanner);
 
 	//// Feel free to modify anything above.
 	//// If you modify something below, please change it back afterwards as my 
