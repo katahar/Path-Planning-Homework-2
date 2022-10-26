@@ -298,30 +298,32 @@ static void planner(
 	//no plan by default
 	*plan = NULL;
 	*planlength = 0;
-	std::vector<arm_state*> plan_vec; // populated by the planner.
+	std::vector<arm_state*> plan_vec;
+	// plan_vec.push_back(new arm_state()); // populated by the planner.
     
-	switch(whichPlanner)
+
+	if(1 == whichPlanner)
 	{
-		case 1: //RRT-Connect
+		rrt_connect rrt_conn = rrt_connect(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
+		rrt_conn.run_rrt_connect_planner();
+	}
+	else if (2 == whichPlanner)
+	{
+
+	}
+	else if (3 == whichPlanner)
+	{
+
+	}
+	else //default to RRT (also case 0)
+	{
 		
-			break;
-
-		case 2: // RRT*
-
-			break; 
-
-		case 3: //PRM
-			
-			break;
-
-		default: //default to RRT (also case 0)
-			rrt rrt_planner = rrt(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
-			rrt_planner.build_rrt();
-			plan_vec = rrt_planner.get_plan();
-			break;
+		rrt rrt_planner = rrt(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
+		rrt_planner.build_rrt();
+		plan_vec = rrt_planner.get_plan();
 	}
 
-	//populates final plan parameters in final format.
+	//populates final plan parameters in final format
 	*planlength = plan_vec.size();
 	*plan = (double**) malloc(plan_vec.size()*sizeof(double*));
 	for (int i = 0; i < plan_vec.size(); i++)

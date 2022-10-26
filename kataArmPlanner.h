@@ -222,6 +222,7 @@ class arm_state
         {
             this->step_num = input;
         }
+
 };
 
 
@@ -299,6 +300,63 @@ class base_planner
             }
             // std::cout<< "GOAL FOUND ______________________________" << std::endl;
             return true;
+        }
+
+        bool states_are_equal(arm_state* left, arm_state* right)
+        {
+            if(left->get_dof() == right->get_dof())
+            {
+                for (int i = 0; i < left->get_dof(); ++i)
+                {
+                    if (abs(right->get_angle(i)-left->get_angle(i)) > 1e-3) 
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        bool states_are_equal(std::vector<double> left, std::vector<double> right)
+        {
+            if(left.size() == right.size())
+            {
+                for (int i = 0; i < left.size(); ++i)
+                {
+                    if (abs(right[i]-left[i]) > 1e-3) 
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        bool states_are_equal(arm_state* left, std::vector<double> right)
+        {
+            if(left->get_dof() == right.size())
+            {
+                for (int i = 0; i < left->get_dof(); ++i)
+                {
+                    if (abs(right[i]-left->get_angle(i)) > 1e-3) 
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
 
         //===================Pulled from assignment for checking validity================================
@@ -497,6 +555,7 @@ class rrt:base_planner
         bool goal_found = false;
         double min_dist = 1000000;
         std::vector<arm_state*> plan;
+        int max_iterations = 100000;
 
     public:
         rrt(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
@@ -511,7 +570,7 @@ class rrt:base_planner
             std::cout << "\t Target state:  ";
             goal_state->print();
 
-            for(int i = 0; i < 100000; i++)
+            for(int i = 0; i < max_iterations; i++)
             {
                 if(i%10000 == 0)
                 {
@@ -552,7 +611,6 @@ class rrt:base_planner
         {
             return plan;
         }
-
 
         void extend_tree(arm_state* rand_input)
         {
@@ -722,3 +780,270 @@ class rrt:base_planner
 
 };
 
+class rrt_connect:base_planner
+{
+    protected:
+        double epsillon = 1.2;
+        int steps = 10; //number of intermediate steps along epsillon that are checked for collision
+        std::vector<arm_state*> start_tree;
+        std::vector<arm_state*> goal_tree;
+        double min_dist = 1000000;
+        int max_iterations = 100000;
+        std::vector<arm_state*> plan;
+
+        #define GOAL_TREE 1
+        #define START_TREE 0
+
+        #define TRAPPED -1
+        #define REACHED -2
+        #define ADVANCED -3
+
+    public:
+        rrt_connect(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
+            int numofDOFs, double*** plan, int* planlength):
+            base_planner(map, x_size, y_size,armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength)
+            {
+                start_tree.push_back(this->start_state);
+                goal_tree.push_back(this->goal_state);
+            }
+
+
+        int switch_tree_id(int tree_id) //gives the ID of the other tree. Does not update the value in tree_id
+        {
+            if(GOAL_TREE == tree_id)
+            {
+                return START_TREE;
+            }
+            return GOAL_TREE;
+        }
+        
+
+        void run_rrt_connect_planner()
+        {
+            // print_trees();
+            int tree_id = START_TREE;
+            for(int i = 0; i < max_iterations; ++i)
+            {
+                // printf("Iteration %d, generating random state and extending %d.\n", i,tree_id);
+                if(TRAPPED != extend_tree(gen_rand_state(),tree_id)) //if not trapped after extending
+                {
+                    // printf("\trandom extension not trapped. attempting to connect to other tree.\n");
+                    // print_trees();
+
+                    if(REACHED == connect(get_last_extended(tree_id),switch_tree_id(tree_id)) )//keep extending until the other tree is reached
+                    {
+                        printf("\tConnection made at:\n");//generate plan
+                        get_last_extended(tree_id)->print();
+                        // print_trees();
+                        return;
+                    }
+                    else
+                    {
+                        // printf("\tConnection failed. \n");
+                    }
+                }
+                else
+                {
+                    // printf("\trandom extension was trapped. Not attempting to connect.\n");
+                }
+                // printf("\tswitching tree.\n");
+                tree_id = switch_tree_id(tree_id);
+            }
+
+            
+        }
+
+        int connect(arm_state* last_extended, int tree_id) //you want to connect to the other tree, so last_extended lives on the opposite tree
+        {
+            printf("\tCONNECT FUNCTION: INPUT TREE %d\n",tree_id);
+            int cur_status = ADVANCED;
+            arm_state* target = find_nearest(last_extended,tree_id);
+            int counter = 0;
+
+            while(ADVANCED == cur_status)
+            {
+                // printf("\titeration %d\n",counter);
+                counter++;
+                cur_status = extend_tree(last_extended,tree_id);
+            }
+            return cur_status;
+        }
+
+        int extend_tree(arm_state* rand_input, int tree_id) 
+        {
+            arm_state* nearest = find_nearest(rand_input, tree_id);
+            std::vector<double> unit_step = get_unit_step(nearest,rand_input);
+            
+            std::vector<double> nearest_state = nearest->get_state(); 
+            std::vector<double> last_valid = nearest->get_state();
+            std::vector<double> temp_state = nearest->get_state();
+
+            int status = ADVANCED;
+
+            // std::cout << "\tCurrent location: ";
+            // rand_input->print();
+
+            // std::cout << "\tgoal location: ";
+            // nearest->print();
+
+
+            for(int i = 0; i < steps; ++i)
+            {              
+                // printf("\t\tStepped state: ");
+                for(int i = 0; i < temp_state.size(); ++i)
+                {
+                    temp_state[i] += unit_step[i];
+                    // printf("%f ",temp_state[i]);
+                }
+                // printf("\n");
+
+                if(IsValidArmConfiguration(temp_state))
+                {
+                    last_valid = temp_state;
+                    
+                    if(states_are_equal(rand_input, last_valid)) //change to compare states.
+                    {
+                        status = REACHED;
+                        break;
+                    }
+                }
+                else
+                {
+                    status = TRAPPED;
+                    break;
+                }
+            }
+            
+            if(!std::equal(nearest_state.begin(), nearest_state.end(), last_valid.begin()) )//meaning that we could successfully move
+            {
+                arm_state* new_state = new arm_state(last_valid);
+
+                min_dist = std::min(min_dist,goal_state->get_dist(new_state));
+
+                new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+                nearest->add_neighbor(new_state);
+
+                new_state->set_step_num(nearest->get_step_num()+1);
+
+                if(GOAL_TREE == tree_id)
+                {
+                    goal_tree.push_back(new_state);
+                }
+                else
+                {
+                    start_tree.push_back(new_state);
+                }
+            }
+            return status;
+        }
+
+        std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
+        {
+            double distance = start_state->get_dist(rand_input);
+            // std::cout <<"\tDistance: " << distance << " Epsillon: " << epsillon << " steps: " << steps << std::endl;
+            std::vector<double> unit_step = start_state->get_component_distance(rand_input);
+
+            // std::cout<< "Initial" << "\t" << "Scaled down" << std::endl;
+
+            if(distance > epsillon) //check to directly add the generated state if smaller than epsillon
+
+            {
+                for(int i = 0; i < unit_step.size(); ++i)
+                {
+                    // std::cout<<  unit_step[i] << "\t" << unit_step[i]*(epsillon/distance)/steps << std::endl;
+                    unit_step[i]=(unit_step[i]*(epsillon/distance))/steps; // divide each unit by this value to get one step of epsillon. further divide into the substeps on the way to epsillon.
+                }
+            }
+            else
+            {
+                for(int i = 0; i < unit_step.size(); ++i)
+                {
+                    unit_step[i]=unit_step[i]/steps; // since the distance is already smaller than epsillon, just divide by steps
+                }
+            }
+
+            return unit_step;
+        }
+
+        std::vector<arm_state*> get_plan()
+        {
+            return plan;
+        }
+
+        arm_state* find_nearest(arm_state* input, int tree_ID)
+        {
+            int nearest_index = 0;
+            double nearest_dist = 10000;
+
+            if(GOAL_TREE == tree_ID)
+            {
+                for(int i = 0; i < goal_tree.size(); ++i)
+                {
+                    double cur_dist = goal_tree[i]->get_dist(input);
+                    if(cur_dist < nearest_dist)
+                    {
+                        nearest_dist = cur_dist;
+                        nearest_index = i;
+                    }
+                }
+                return goal_tree[nearest_index];
+            }
+            else //START_TREE
+            {
+                for(int i = 0; i < start_tree.size(); ++i)
+                {
+                    double cur_dist = start_tree[i]->get_dist(input);
+                    if(cur_dist < nearest_dist)
+                    {
+                        nearest_dist = cur_dist;
+                        nearest_index = i;
+                    }
+                }
+                return start_tree[nearest_index];
+            }
+         
+           
+        }
+        
+        void print_tree(int tree_id)
+        {
+            if(GOAL_TREE == tree_id)
+            {
+                printf("printing goal tree: \n");
+                for(int i = 0; i <goal_tree.size(); ++i)
+                {
+                    goal_tree[i]->print();
+                }
+            }
+            else
+            {
+                printf("printing start tree: \n");
+                for(int i = 0; i <start_tree.size(); ++i)
+                {
+                    start_tree[i]->print();
+                }
+            }
+            printf("---------------- end of tree\n");
+
+        }
+
+        void print_trees()
+        {
+            printf("Tree status:\n");
+            print_tree(START_TREE);
+            print_tree(GOAL_TREE);
+        }
+
+        arm_state* get_last_extended(int tree_id)
+            {
+                if(GOAL_TREE == tree_id)
+                {
+                    // printf("Returning the back of the goal tree %d\n", GOAL_TREE);
+                    return goal_tree.back();
+                }
+                // printf("Returning the back of the start tree %d\n", START_TREE);
+                return start_tree.back();
+            }
+
+        
+};
