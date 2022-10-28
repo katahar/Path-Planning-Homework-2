@@ -804,7 +804,9 @@ class rrt_connect:base_planner
             base_planner(map, x_size, y_size,armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength)
             {
                 start_tree.push_back(this->start_state);
+                // start_state->print();
                 goal_tree.push_back(this->goal_state);
+                // goal_state->print();
             }
 
 
@@ -818,23 +820,94 @@ class rrt_connect:base_planner
         }
         
 
+        arm_state* get_from_other_tree(arm_state* input, int this_tree_id)
+        {
+            if(GOAL_TREE == switch_tree_id(this_tree_id))
+            {
+                // printf("Searching goal tree!\n");
+                for(int i = goal_tree.size()-1; i >= 0; i--)
+                {
+                    if(states_are_equal(goal_tree[i],input))
+                    {
+                        // printf("\tFound it! %d\n", goal_tree[i]->get_step_num());
+                        return goal_tree[i];
+                    }
+                }
+            }
+            else
+            {
+                // printf("Searching start tree!\n");
+                for(int i = start_tree.size()-1; i >= 0; i--)
+                {
+                    if(states_are_equal(start_tree[i],input))
+                    {
+                        // printf("\tFound it! %d\n", start_tree[i]->get_step_num());
+                        return start_tree[i];
+                    }
+                    else
+                    {
+                        // printf("Keep looking.");
+                    }
+                }
+            }
+            printf("\tFailed to find equivalent node on tree %d!!!!!!!!!!!!!!!\n", switch_tree_id(this_tree_id));
+            return input;
+        } 
+
+
+
         void run_rrt_connect_planner()
         {
             // print_trees();
             int tree_id = START_TREE;
             for(int i = 0; i < max_iterations; ++i)
             {
-                // printf("Iteration %d, generating random state and extending %d.\n", i,tree_id);
-                if(TRAPPED != extend_tree(gen_rand_state(),tree_id)) //if not trapped after extending
+                // printf("Iteration # %d, generating random state and extending %d.\n", i,tree_id);
+                if(TRAPPED != extend_tree(gen_rand_state(),tree_id, false)) //if not trapped after extending
                 {
                     // printf("\trandom extension not trapped. attempting to connect to other tree.\n");
                     // print_trees();
 
                     if(REACHED == connect(get_last_extended(tree_id),switch_tree_id(tree_id)) )//keep extending until the other tree is reached
                     {
-                        printf("\tConnection made at:\n");//generate plan
-                        get_last_extended(tree_id)->print();
+
+                        print_trees();
+
+                        printf("Connection from tree %d at: ", tree_id);
+                        arm_state* connect_state_tree_A = get_last_extended(tree_id);
+                        connect_state_tree_A->print();
+                        print_neighbors(connect_state_tree_A);
+
+                        printf("\nEquivalent in tree %d at: ", switch_tree_id(tree_id));
+                        get_from_other_tree(connect_state_tree_A,tree_id)->print();
+                        print_neighbors(get_from_other_tree(connect_state_tree_A,tree_id));
+
+                        // printf("\n connection point neighbors:");
+                        // for(int i = 0; i < get_last_extended(tree_id)->get_num_neighbors(); i++)
+                        // {
+                        //     printf("\t (index: %d)", get_last_extended(tree_id)->get_neighbor(i)->get_step_num());
+                        //     get_last_extended(tree_id)->get_neighbor(i)->print();
+                        // }
+
+                        // printf("\n");printf("\n");
                         // print_trees();
+                        printf("\nGoal tree %d, start tree %d\n", GOAL_TREE, START_TREE);
+                        printf("\n\nGenerating plan A (Tree %d)\n",tree_id);
+                        std::vector<arm_state*> planA = generate_plan(connect_state_tree_A); //generating plan from tree A
+
+                        
+                        printf("\n\nGenerating plan B (Tree %d)\n",switch_tree_id(tree_id));
+                        // arm_state* same_state_other_tree = get_from_other_tree(get_last_extended(tree_id),tree_id);
+                        // same_state_other_tree->get_num_neighbors();
+                        // printf("Equal state other tree is :");
+                        // same_state_other_tree->print();
+                        // printf("Number neighbors: %d   count: %d\n", same_state_other_tree->get_num_neighbors(), same_state_other_tree->get_step_num());
+                        
+                        // printf("------\nNeighboring state:  ");
+                        // same_state_other_tree->get_neighbor(0)->print();
+                        // printf("Number neighbors: %d   count: %d\n", same_state_other_tree->get_neighbor(0)->get_num_neighbors(), same_state_other_tree->get_neighbor(0)->get_step_num());
+                        std::vector<arm_state*> planB = generate_plan(get_from_other_tree(connect_state_tree_A,tree_id)); //generating plan from tree B
+
                         return;
                     }
                     else
@@ -849,13 +922,48 @@ class rrt_connect:base_planner
                 // printf("\tswitching tree.\n");
                 tree_id = switch_tree_id(tree_id);
             }
+            printf("Ran out of iterations\n");
 
             
         }
 
+        std::vector<arm_state*> generate_plan(arm_state* last_extended)
+        {
+            std::vector<arm_state*> ret_plan;
+
+            arm_state* current = last_extended; //the node that will be added to the plan
+            arm_state* temp_neighbor; //the potential neighbor that is being evaluated
+
+            printf("Goal step number: %d\n", last_extended->get_step_num());
+            for(int i = 0; i < last_extended->get_step_num(); ++i) //iterating over the size of the plan
+            {
+                // printf("Iteration :%d \n", i);
+                for(int j = 0; j < current->get_num_neighbors(); ++j) //iterating over all potential neighbors
+                {
+                    // printf("\tNeighbor number %d\n",j);
+                    temp_neighbor = current->get_neighbor(j);
+                    if(current->get_step_num()-1 == temp_neighbor->get_step_num()) //neighbor is going closer to the start if the step number decreases by 1
+                    {
+                        // printf("\tFound!\n");
+                        ret_plan.insert(ret_plan.begin(), current);
+                        current = temp_neighbor;
+                        current->print();
+                        break;
+                    }
+                    // printf("%s:%d\n", __FUNCTION__,__LINE__);
+                }
+                // printf("%s:%d\n", __FUNCTION__,__LINE__);
+            }
+            // printf("%s:%d\n", __FUNCTION__,__LINE__);
+
+            ret_plan.insert(ret_plan.begin(), current);
+            // printf("done. \n");
+            return ret_plan;
+        }
+
         int connect(arm_state* last_extended, int tree_id) //you want to connect to the other tree, so last_extended lives on the opposite tree
         {
-            printf("\tCONNECT FUNCTION: INPUT TREE %d\n",tree_id);
+            // printf("\tCONNECT FUNCTION: INPUT TREE %d\n",tree_id);
             int cur_status = ADVANCED;
             arm_state* target = find_nearest(last_extended,tree_id);
             int counter = 0;
@@ -864,16 +972,19 @@ class rrt_connect:base_planner
             {
                 // printf("\titeration %d\n",counter);
                 counter++;
-                cur_status = extend_tree(last_extended,tree_id);
+                cur_status = extend_tree(last_extended,tree_id, true);
             }
             return cur_status;
         }
 
-        int extend_tree(arm_state* rand_input, int tree_id) 
+        int extend_tree(arm_state* rand_input, int tree_id, bool called_from_connect) 
         {
+            // printf("%s:%d\n",__FUNCTION__,__LINE__);
             arm_state* nearest = find_nearest(rand_input, tree_id);
+            // printf("%s:%d\n",__FUNCTION__,__LINE__);
             std::vector<double> unit_step = get_unit_step(nearest,rand_input);
-            
+            // printf("%s:%d\n",__FUNCTION__,__LINE__);
+
             std::vector<double> nearest_state = nearest->get_state(); 
             std::vector<double> last_valid = nearest->get_state();
             std::vector<double> temp_state = nearest->get_state();
@@ -920,10 +1031,23 @@ class rrt_connect:base_planner
 
                 min_dist = std::min(min_dist,goal_state->get_dist(new_state));
 
-                new_state->add_neighbor(nearest); //adding each other as mutual neighbors
-                nearest->add_neighbor(new_state);
+                // new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+                // nearest->add_neighbor(new_state);
 
-                new_state->set_step_num(nearest->get_step_num()+1);
+                if(called_from_connect)
+                {
+                    arm_state* last_added_same_tree = get_last_extended((tree_id)); 
+                    new_state->add_neighbor(last_added_same_tree); //adding each other as mutual neighbors
+                    last_added_same_tree->add_neighbor(new_state);
+                    new_state->set_step_num(last_added_same_tree->get_step_num()+1);
+
+                }
+                else
+                {
+                    new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+                    nearest->add_neighbor(new_state);
+                    new_state->set_step_num(nearest->get_step_num()+1);
+                }
 
                 if(GOAL_TREE == tree_id)
                 {
@@ -935,6 +1059,17 @@ class rrt_connect:base_planner
                 }
             }
             return status;
+        }
+
+        void print_neighbors(arm_state* input)
+        {
+            printf("%d Neighbors of (step %d) ",input->get_num_neighbors(), input->get_step_num());
+            input->print();
+            for(int i = 0; i < input->get_num_neighbors(); i++)
+            {
+                printf("\t (step %d) ", input->get_neighbor(i)->get_step_num());
+                input->get_neighbor(i)->print();
+            }
         }
 
         std::vector<double> get_unit_step(arm_state* start_state, arm_state* rand_input)
@@ -975,9 +1110,10 @@ class rrt_connect:base_planner
             int nearest_index = 0;
             double nearest_dist = 10000;
 
+        
             if(GOAL_TREE == tree_ID)
             {
-                for(int i = 0; i < goal_tree.size(); ++i)
+                for(int i = goal_tree.size()-1; i >=0 ; --i)
                 {
                     double cur_dist = goal_tree[i]->get_dist(input);
                     if(cur_dist < nearest_dist)
@@ -990,15 +1126,22 @@ class rrt_connect:base_planner
             }
             else //START_TREE
             {
-                for(int i = 0; i < start_tree.size(); ++i)
+                // printf("%s:%d\n",__FUNCTION__,__LINE__);
+                for(int i = start_tree.size()-1; i >=0 ; --i)
                 {
+                    // printf("%s:%d\n",__FUNCTION__,__LINE__);
+                    // input->print();
+                    // start_tree[i]->print();
                     double cur_dist = start_tree[i]->get_dist(input);
+                    // printf("%s:%d\n",__FUNCTION__,__LINE__);
                     if(cur_dist < nearest_dist)
                     {
+                        // printf("%s:%d\n",__FUNCTION__,__LINE__);
                         nearest_dist = cur_dist;
                         nearest_index = i;
                     }
                 }
+                // printf("%s:%d\n",__FUNCTION__,__LINE__);
                 return start_tree[nearest_index];
             }
          
@@ -1009,7 +1152,7 @@ class rrt_connect:base_planner
         {
             if(GOAL_TREE == tree_id)
             {
-                printf("printing goal tree: \n");
+                printf("printing goal tree: (%d) \n", GOAL_TREE);
                 for(int i = 0; i <goal_tree.size(); ++i)
                 {
                     goal_tree[i]->print();
@@ -1017,7 +1160,7 @@ class rrt_connect:base_planner
             }
             else
             {
-                printf("printing start tree: \n");
+                printf("printing start tree:(%d) \n", START_TREE);
                 for(int i = 0; i <start_tree.size(); ++i)
                 {
                     start_tree[i]->print();
