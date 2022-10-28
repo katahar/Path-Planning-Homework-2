@@ -306,6 +306,8 @@ static void planner(
 	{
 		rrt_connect rrt_conn = rrt_connect(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
 		rrt_conn.run_rrt_connect_planner();
+		plan_vec = rrt_conn.get_plan();
+
 	}
 	else if (2 == whichPlanner)
 	{
