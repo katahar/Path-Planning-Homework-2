@@ -28,6 +28,8 @@ class arm_state
         int num_neighbors = 0;
         std::vector<arm_state*> connected_neighbors;
 
+        int tree_id = -1;
+
     public: 
         arm_state()
         {
@@ -223,6 +225,15 @@ class arm_state
             this->step_num = input;
         }
 
+        void set_tree_id(int id)
+        {
+            this->tree_id = id; 
+        }
+
+        int get_tree_id()
+        {
+            return this->tree_id;
+        }
 };
 
 
@@ -256,8 +267,8 @@ class base_planner
                 this->planlength = planlength;
 
                 /* initialize random seed: */
-                // std::srand(time(NULL));
-                std::srand(1000);
+                std::srand(time(NULL));
+                // std::srand(1040);
             }
         
         arm_state* gen_rand_state()
@@ -276,6 +287,19 @@ class base_planner
                 arm_state* generated_state = new arm_state(rand_angles);
                 return generated_state;
             }
+        }
+        
+        arm_state* gen_rand_state_no_seed()
+        {
+
+            std::vector<double> rand_angles;
+            for(int i = 0; i < DOFs; ++i)
+            {
+                rand_angles.push_back((2*PI*(rand()%1000)/1000)); //generates a number in [0,2pi), up to 3 decimal places
+            }
+            arm_state* generated_state = new arm_state(rand_angles);
+            return generated_state;
+
         }
         
         bool is_goal_state(std::vector<double> state) // pulled from equalDoubleArrays in planner.cpp
@@ -855,7 +879,6 @@ class rrt_connect:base_planner
         } 
 
 
-
         void run_rrt_connect_planner()
         {
             // print_trees();
@@ -863,15 +886,16 @@ class rrt_connect:base_planner
             for(int i = 0; i < max_iterations; ++i)
             {
                 // printf("Iteration # %d, generating random state and extending %d.\n", i,tree_id);
-                if(TRAPPED != extend_tree(gen_rand_state(),tree_id, false)) //if not trapped after extending
+                if(TRAPPED != extend_tree(gen_rand_state_no_seed(),tree_id)) //if not trapped after extending
                 {
                     // printf("\trandom extension not trapped. attempting to connect to other tree.\n");
                     // print_trees();
 
-                    if(REACHED == connect(get_last_extended(tree_id),switch_tree_id(tree_id)) )//keep extending until the other tree is reached
+                    if(REACHED == connect(get_last_extended(tree_id),(tree_id)) )//extend other tree to aim at the newly added node to this tree.
+                    // if(false)
                     {
 
-                        // print_trees();
+                        print_trees();
                         printf("\nGoal tree %d, start tree %d\n", GOAL_TREE, START_TREE);
                         printf("This is tree %d\n\n", tree_id);
 
@@ -975,24 +999,233 @@ class rrt_connect:base_planner
             return ret_plan;
         }
 
-        int connect(arm_state* last_extended, int tree_id) //you want to connect to the other tree, so last_extended lives on the opposite tree
+        int connect(arm_state* last_extended, int tree_id) //id and last extended state of THIS tree
         {
             // printf("\tCONNECT FUNCTION: INPUT TREE %d\n",tree_id);
             int cur_status = ADVANCED;
-            arm_state* target = find_nearest(last_extended,tree_id);
-            // int counter = 0;
 
-            while(ADVANCED == cur_status)
-            {
-                printf("Extending tree %d to %d\n", switch_tree_id(tree_id), tree_id);
-                // printf("\titeration %d\n",counter);
-                // counter++;
-                cur_status = extend_tree(last_extended,tree_id, true);
-            }
+            printf("Extending tree %d to %d\n", switch_tree_id(tree_id),tree_id);
+            cur_status = extent_tree_continuously(last_extended,tree_id);
+
             return cur_status;
         }
 
-        int extend_tree(arm_state* rand_input, int tree_id, bool called_from_connect) 
+        // int extend_tree(arm_state* rand_input, int tree_id, bool called_from_connect) 
+        // {
+        //     // printf("%s:%d\n",__FUNCTION__,__LINE__);
+        //     arm_state* nearest = find_nearest(rand_input, tree_id);
+        //     // printf("%s:%d\n",__FUNCTION__,__LINE__);
+        //     std::vector<double> unit_step = get_unit_step(nearest,rand_input);
+        //     // printf("%s:%d\n",__FUNCTION__,__LINE__);
+        //     std::vector<double> nearest_state = nearest->get_state(); 
+        //     std::vector<double> last_valid = nearest->get_state();
+        //     std::vector<double> temp_state = nearest->get_state();
+        //     int status = ADVANCED;
+        //     // std::cout << "\tCurrent location: ";
+        //     // rand_input->print();
+        //     // std::cout << "\tgoal location: ";
+        //     // nearest->print();
+        //     for(int i = 0; i < steps; ++i)
+        //     {              
+        //         // printf("\t\tStepped state: ");
+        //         for(int i = 0; i < temp_state.size(); ++i)
+        //         {
+        //             temp_state[i] += unit_step[i];
+        //             // printf("%f ",temp_state[i]);
+        //         }
+        //         // printf("\n");
+        //         if(IsValidArmConfiguration(temp_state))
+        //         {
+        //             last_valid = temp_state;          
+        //             if(states_are_equal(rand_input, last_valid)) //change to compare states.
+        //             {
+        //                 status = REACHED;
+        //                 break;
+        //             }
+        //         }
+        //         else
+        //         {
+        //             status = TRAPPED;
+        //             break;
+        //         }
+        //     }
+        //     if(!std::equal(nearest_state.begin(), nearest_state.end(), last_valid.begin()) )//meaning that we could successfully move
+        //     {
+        //         printf("neighbor from tree %d\n", tree_id);
+        //         arm_state* new_state = new arm_state(last_valid);
+        //         printf("\tNearest neighbor: ");
+        //         nearest->print();
+        //         printf("\tLast valid state: ");
+        //         new_state->print();
+        //         printf("\ttarget state: ");
+        //         rand_input->print();          
+        //         min_dist = std::min(min_dist,goal_state->get_dist(new_state));
+        //         // new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+        //         // nearest->add_neighbor(new_state);
+        //         if(called_from_connect)
+        //         {
+        //             arm_state* last_added_same_tree = get_last_extended((tree_id)); 
+        //             new_state->add_neighbor(last_added_same_tree); //adding each other as mutual neighbors
+        //             last_added_same_tree->add_neighbor(new_state);
+        //             new_state->set_step_num(last_added_same_tree->get_step_num()+1);         
+        //             // if(new_state->get_dist(last_added_same_tree) > epsillon)
+        //             if(true)
+        //             {             
+        //                 printf("\t(original tree is %d\n", switch_tree_id(tree_id));
+        //                 printf("\tAttaching to : ");
+        //                 last_added_same_tree->print();
+        //                 printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(last_added_same_tree) );
+        //                 printf("\tback of tree(this?) %d ", tree_id);
+        //                 get_last_extended((tree_id))->print();             
+        //                 // print_tree(switch_tree_id(tree_id));
+        //                 printf("\tback of tree(other?) %d ", switch_tree_id(tree_id));
+        //                 get_last_extended(switch_tree_id(tree_id))->print();
+        //                 // print_tree(tree_id);
+        //                 printf("================\n");
+        //             }          
+        //         }
+        //         else
+        //         {
+        //             new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+        //             nearest->add_neighbor(new_state);
+        //             new_state->set_step_num(nearest->get_step_num()+1);
+        //             if(new_state->get_dist(nearest) > epsillon)
+        //             {       
+        //                 printf("\t(original tree is %d\n", (tree_id));
+        //                 printf("\tAttaching to : ");
+        //                 nearest->print();
+        //                 printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(nearest) );
+        //             }
+        //         }
+        //         if(GOAL_TREE == tree_id)
+        //         {
+        //             goal_tree.push_back(new_state);
+        //         }
+        //         else
+        //         {
+        //             start_tree.push_back(new_state);
+        //         }
+        //     }
+        //     return status;
+        // }
+
+        int extent_tree_continuously(arm_state* target_this_tree, int this_tree_id) //tree id is the other tree's id 
+        {
+            arm_state* last_extended_state = find_nearest(target_this_tree,switch_tree_id(this_tree_id)); //this will need to be updated at the end of the loop
+            int status = ADVANCED;
+            printf("Goal size before connect %d start size %d\n", goal_tree.size(), start_tree.size());
+
+            while(ADVANCED == status)
+            {
+
+                std::vector<double> unit_step = get_unit_step(last_extended_state, target_this_tree);
+
+                std::vector<double> nearest_state = last_extended_state->get_state(); // a reference to see if we can extend
+                std::vector<double> last_valid = last_extended_state->get_state(); //updated continuously with the last valid configuration
+                std::vector<double> temp_state = last_extended_state->get_state();                 
+
+                // std::cout << "\tCurrent location: ";
+                // rand_input->print();
+
+                // std::cout << "\tgoal location: ";
+                // nearest->print();
+
+
+                for(int i = 0; i < steps; ++i) //iterating over steps
+                {              
+                    // printf("\t\tStepped state: ");
+                    for(int i = 0; i < temp_state.size(); ++i) //iterating over angles
+                    {
+                        temp_state[i] += unit_step[i];
+                        // printf("%f ",temp_state[i]);
+                    }
+                    // printf("\n");
+
+                    if(IsValidArmConfiguration(temp_state))
+                    {
+                        last_valid = temp_state;
+                        
+                        if(states_are_equal(target_this_tree, last_valid)) //seeing if the target was reached.
+                        {
+                            
+                            printf("\tReached at (%d)", target_this_tree->get_tree_id());
+                            target_this_tree->print();
+                            status = REACHED;
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        printf("\ttrapped\n");
+                        status = TRAPPED;
+                        break;
+                    }
+                }
+                
+                if(!std::equal(nearest_state.begin(), nearest_state.end(), last_valid.begin()) )//meaning that we could successfully move
+                {
+                    //check if you hit the target. If not, check if you hit an obstacle. If not, go again.
+                    arm_state* new_state = new arm_state(last_valid);
+                    new_state->set_tree_id(this_tree_id);
+
+                    new_state->add_neighbor(last_extended_state); //adding each other as mutual neighbors
+                    last_extended_state->add_neighbor(new_state);
+                    new_state->set_step_num(last_extended_state->get_step_num()+1);
+                
+                    if(new_state->get_dist(last_extended_state) > epsillon)
+                    {       
+                        printf("!______________________________________________________________\n");
+                        printf("\t(original tree is %d\n", (target_this_tree));
+                        printf("\tAttaching to : ");
+                        last_extended_state->print();
+                        printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(last_extended_state) );
+                    }
+                    if(GOAL_TREE == switch_tree_id(this_tree_id)) //add state to the appropriate tree.
+                    {
+                        goal_tree.push_back(new_state);
+                        printf("Adding to goal tree\n");
+
+                    }
+                    else
+                    {
+                        start_tree.push_back(new_state);
+                        printf("Adding to start tree\n");
+
+                    }
+                    
+
+                    if(ADVANCED == status)// meaning that the tree was extended and did not run into anything. otherwise it will leave the loop anyway
+                    {
+                        //update last_extended state and go again.
+                        printf("\tstill advanced. going agian\n");
+                        last_extended_state = new_state;
+                    }
+                    // printf("neighbor from tree %d\n", tree_id);
+                    // printf("\tNearest neighbor: ");
+                    // nearest->print();
+
+                    // printf("\tLast valid state: ");
+                    // new_state->print();
+
+                    // printf("\ttarget state: ");
+                    // rand_input->print();          
+
+
+                    min_dist = std::min(min_dist,goal_state->get_dist(new_state));
+
+
+                    // new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+                    // nearest->add_neighbor(new_state);
+        
+                }
+            }
+            // print_trees();
+            printf("Goal size after connect %d start size %d\n", goal_tree.size(), start_tree.size());
+            return status;
+        }
+
+
+        int extend_tree(arm_state* rand_input, int tree_id) 
         {
             // printf("%s:%d\n",__FUNCTION__,__LINE__);
             arm_state* nearest = find_nearest(rand_input, tree_id);
@@ -1042,18 +1275,18 @@ class rrt_connect:base_planner
             
             if(!std::equal(nearest_state.begin(), nearest_state.end(), last_valid.begin()) )//meaning that we could successfully move
             {
+                // printf("Tree extended\n");
 
-
-                printf("neighbor from tree %d\n", tree_id);
+                // printf("neighbor from tree %d\n", tree_id);
                 arm_state* new_state = new arm_state(last_valid);
-                printf("\tNearest neighbor: ");
-                nearest->print();
+                // printf("\tNearest neighbor: ");
+                // nearest->print();
 
-                printf("\tLast valid state: ");
-                new_state->print();
+                // printf("\tLast valid state: ");
+                // new_state->print();
 
-                printf("\ttarget state: ");
-                rand_input->print();          
+                // printf("\ttarget state: ");
+                // rand_input->print();          
 
 
                 min_dist = std::min(min_dist,goal_state->get_dist(new_state));
@@ -1062,45 +1295,17 @@ class rrt_connect:base_planner
                 // new_state->add_neighbor(nearest); //adding each other as mutual neighbors
                 // nearest->add_neighbor(new_state);
     
-                if(called_from_connect)
-                {
+                new_state->set_tree_id(tree_id);
+                new_state->add_neighbor(nearest); //adding each other as mutual neighbors
+                nearest->add_neighbor(new_state);
+                new_state->set_step_num(nearest->get_step_num()+1);
 
-                    arm_state* last_added_same_tree = get_last_extended((tree_id)); 
-                    new_state->add_neighbor(last_added_same_tree); //adding each other as mutual neighbors
-                    last_added_same_tree->add_neighbor(new_state);
-                    new_state->set_step_num(last_added_same_tree->get_step_num()+1);
-                    
-                    if(new_state->get_dist(last_added_same_tree) > epsillon)
-                    {
-                        
-                        printf("\t(original tree is %d\n", switch_tree_id(tree_id));
-                        printf("\tAttaching to : ");
-                        last_added_same_tree->print();
-                        printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(last_added_same_tree) );
-                        printf("tree: \n");
-                        print_tree(switch_tree_id(tree_id));
-
-                        printf("OTHER tree\n");
-                        print_tree(tree_id);
-                        printf("================\n");
-                    }
-                   
-
-                }
-                else
-                {
-                    new_state->add_neighbor(nearest); //adding each other as mutual neighbors
-                    nearest->add_neighbor(new_state);
-                    new_state->set_step_num(nearest->get_step_num()+1);
-
-                    if(new_state->get_dist(nearest) > epsillon)
-                    {       
-                        printf("\t(original tree is %d\n", (tree_id));
-                        printf("\tAttaching to : ");
-                        nearest->print();
-                        printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(nearest) );
-                    }
-
+                if(false)
+                {       
+                    printf("\tconnecting to tree %d\n", (tree_id));
+                    printf("\tAttaching to : ");
+                    nearest->print();
+                    printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(nearest) );
                 }
 
                 if(GOAL_TREE == tree_id)
@@ -1209,6 +1414,7 @@ class rrt_connect:base_planner
                 printf("printing goal tree: (%d) \n", GOAL_TREE);
                 for(int i = 0; i <goal_tree.size(); ++i)
                 {
+                    printf("\t (%d)", goal_tree[i]->get_step_num());
                     goal_tree[i]->print();
                 }
             }
@@ -1217,6 +1423,7 @@ class rrt_connect:base_planner
                 printf("printing start tree:(%d) \n", START_TREE);
                 for(int i = 0; i <start_tree.size(); ++i)
                 {
+                    printf("\t (%d)", start_tree[i]->get_step_num());
                     start_tree[i]->print();
                 }
             }
@@ -1246,7 +1453,7 @@ class rrt_connect:base_planner
         {
             for(int i = 0; i < plan.size(); i++)
             {
-                printf("\t");
+                printf("\t (%d)", plan[i]->get_step_num());
                 plan[i]->print();
             }
         }
