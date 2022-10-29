@@ -8,6 +8,8 @@
 #include <vector>
 #include <array>
 #include <algorithm>
+#include <chrono>
+
 
 #include <tuple>
 #include <string>
@@ -295,6 +297,8 @@ static void planner(
 			int whichPlanner=0  //defaulting to RRT
 			)
 {
+	auto start = std::chrono::high_resolution_clock::now();
+
 	//no plan by default
 	*plan = NULL;
 	*planlength = 0;
@@ -311,7 +315,9 @@ static void planner(
 	}
 	else if (2 == whichPlanner)
 	{
-
+		rrt_star rrt_str = rrt_star(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
+		rrt_str.build_rrt();
+		plan_vec = rrt_str.get_plan();
 	}
 	else if (3 == whichPlanner)
 	{
@@ -319,7 +325,6 @@ static void planner(
 	}
 	else //default to RRT (also case 0)
 	{
-		
 		rrt rrt_planner = rrt(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
 		rrt_planner.build_rrt();
 		plan_vec = rrt_planner.get_plan();
@@ -337,7 +342,10 @@ static void planner(
 		}
 	}
 	
-	std::cout << "Done. " << std::endl;
+	auto finish = std::chrono::high_resolution_clock::now();
+	auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(finish-start);
+
+	std::cout << "Done. (" << double(microseconds.count())/double(1000000) << " seconds)" << std::endl;
     return;
 }
 

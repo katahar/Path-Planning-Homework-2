@@ -15,6 +15,7 @@
 #include <iterator>
 #include <algorithm>    // std::min
 #include <assert.h>     /* assert */
+#include <math.h>       /* log */
 
 
 class arm_state
@@ -29,6 +30,7 @@ class arm_state
         std::vector<arm_state*> connected_neighbors;
 
         int tree_id = -1;
+        double cost = 0;
 
     public: 
         arm_state()
@@ -137,6 +139,41 @@ class arm_state
             connected_neighbors.push_back(new_neighbor);
             ++num_neighbors;
             return num_neighbors;
+        }
+
+        bool remove_neighbor(arm_state* neighbor)
+        {
+            for(int i = 0; i = this->num_neighbors; ++i)
+            {
+                if(connected_neighbors[i] == neighbor)
+                {
+                    this->num_neighbors--;
+                    this->connected_neighbors.erase(this->connected_neighbors.begin()+i);
+                    return true;
+                }
+            }
+            printf("Failed to find neighbor for erasing!!!!!!!\n");
+            return false;
+        }
+
+        arm_state* get_parent()
+        {
+            for (int i = 0; i < connected_neighbors.size(); i++)
+            {
+                if(connected_neighbors[i]->get_step_num() == this->step_num-1)
+                {
+                    return connected_neighbors[i];
+                }
+            }
+        }
+        double get_cost()
+        {
+            return this->cost;
+        }
+
+        void set_cost(double in_cost)
+        {
+            this->cost = in_cost;
         }
 
         double get_dist(arm_state* input_state)
@@ -267,13 +304,15 @@ class base_planner
                 this->planlength = planlength;
 
                 /* initialize random seed: */
-                std::srand(time(NULL));
-                // std::srand(1040);
+                auto seed = time(NULL);
+                std::cout << "Seed: " << seed << std::endl;
+                std::srand(seed);
+                // std::srand(1000);
             }
         
         arm_state* gen_rand_state()
         {
-            if(std::rand()%10 == 1)
+            if(std::rand()%9 == 1)
             {
                 return goal_state;
             }
@@ -569,17 +608,16 @@ class base_planner
 
 };
 
-
-class rrt:base_planner
+class rrt:public base_planner
 {
     protected:
-        double epsillon = 1.2;
-        int steps = 10; //number of intermediate steps along epsillon that are checked for collision
+        double epsillon = 01.2;
+        int steps = 7; //number of intermediate steps along epsillon that are checked for collision
         std::vector<arm_state*> tree;
         bool goal_found = false;
-        double min_dist = 1000000;
+        double min_dist = 100000;
         std::vector<arm_state*> plan;
-        int max_iterations = 100000;
+        int max_iterations = 500000;
 
     public:
         rrt(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
@@ -705,7 +743,6 @@ class rrt:base_planner
 
                 new_state->add_neighbor(nearest); //adding each other as mutual neighbors
                 nearest->add_neighbor(new_state);
-
                 new_state->set_step_num(nearest->get_step_num()+1);
 
                 if(is_goal_state(new_state))
@@ -804,7 +841,7 @@ class rrt:base_planner
 
 };
 
-class rrt_connect:base_planner
+class rrt_connect:public base_planner
 {
     protected:
         double epsillon = 1.2;
@@ -1455,6 +1492,226 @@ class rrt_connect:base_planner
             {
                 printf("\t (%d)", plan[i]->get_step_num());
                 plan[i]->print();
+            }
+        }
+};
+
+class rrt_star:public rrt
+{
+    protected:
+        double gamma = 1;
+
+    public:
+        rrt_star(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
+                int numofDOFs, double*** plan, int* planlength):
+                rrt(map, x_size, y_size,armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength)
+                {
+                    //nothing
+                }
+
+        double calculate_radius()
+        {
+            int V = tree.size();
+            double radius_option = std::pow((gamma*log(V)/V),double(1/tree.back()->get_dof()));
+            return std::min(radius_option,epsillon);
+        }
+
+
+        void extend_tree(arm_state* rand_input)
+        {
+            arm_state* nearest = find_nearest(rand_input);
+            std::vector<double> unit_step = get_unit_step(nearest,rand_input);
+            
+            std::vector<double> nearest_state = nearest->get_state(); 
+            std::vector<double> last_valid = nearest->get_state();
+            std::vector<double> temp_state = nearest->get_state();
+            
+            // std::cout << "Random state:" << std::endl;
+            // std::cout << "\t" ;
+            // for(int i = 0; i < rand_input->get_dof(); ++i)
+            // {
+            //     std::cout << rand_input->get_angle(i) << " ";
+            // }
+            // std::cout << "  " << std::endl;
+            // std::cout << "nearest state:" << std::endl;
+            // std::cout << "\t" ;
+            // for(int i = 0; i < nearest->get_dof(); ++i)
+            // {
+            //     std::cout << nearest->get_angle(i) << " ";
+            // }
+            // std::cout << "  " << std::endl;
+            // std::cout << "unit step: " << std::endl;
+            // std::cout << "\t" ;
+            // for(int i = 0; i < unit_step.size(); ++i)
+            // {
+            //     std::cout << unit_step[i] << " ";
+            // }
+            // std::cout << "\n-------------------------" << std::endl;
+
+
+            for(int i = 0; i < steps; ++i)
+            {
+                // std::transform (temp_state.begin(), temp_state.end(), unit_step.begin(), temp_state.begin(), std::plus<double>());    //check for collision
+                
+                for(int i = 0; i < temp_state.size(); ++i)
+                {
+                    temp_state[i] += unit_step[i];
+                }
+
+                if(IsValidArmConfiguration(temp_state))
+                {
+                    // std::cout << "\t\tThis is a valid config. \n" <<std::endl;
+                    last_valid = temp_state;
+                    // last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
+                    
+                    if(is_goal_state(last_valid))
+                    {
+                        std::cout<< "1 GOAL FOUND ______________________________" << std::endl;
+
+                        break;
+                    }
+                }
+                else
+                {
+                    // std::cout << "\t\tNOT VALID \n" <<std::endl;
+                    break;
+                }
+            }
+            
+            if(!std::equal(nearest_state.begin(), nearest_state.end(), last_valid.begin()) )//meaning that we could successfully move
+            {
+                arm_state* new_state = new arm_state(last_valid);
+
+                min_dist = std::min(min_dist,goal_state->get_dist(new_state));
+
+                //RRT*. This is where you decide who to connect the new state to
+                std::vector<arm_state*> region_neighbors = neighbors_in_r(calculate_radius(),new_state);
+                arm_state* new_parent = get_cheapest_parent(new_state,region_neighbors);
+
+                new_state->add_neighbor(new_parent); //adding each other as mutual neighbors
+                new_parent->add_neighbor(new_state);
+                new_state->set_step_num(new_parent->get_step_num()+1);
+                new_state->set_cost(new_parent->get_cost()+new_state->get_dist(new_parent));
+
+                //RRT*. This is where you rewire the set of neighbors you have just evaluated.
+                // rewire(new_state,region_neighbors);
+
+                if(is_goal_state(new_state))
+                {
+                    new_state->set_is_goal();
+                    goal_found = true;
+                }
+
+                tree.push_back(new_state);
+
+            }
+
+        }
+
+        std::vector<arm_state*> neighbors_in_r(double radius, arm_state* input)
+        {
+            std::vector<arm_state*> neighbors; 
+            for(int i = 0; i < tree.size(); ++i)
+            {
+                double cur_dist = tree[i]->get_dist(input);
+                if(cur_dist < radius)
+                {
+                    neighbors.push_back(tree[i]);
+                }
+            }
+            return neighbors;
+        }
+
+        arm_state* get_cheapest_parent(arm_state* input, std::vector<arm_state*> neighbors)
+        {
+            double lowest_cost = 100000000000;
+            arm_state* cheapest_neighbor = nullptr;
+
+            for(int i = 0; i < neighbors.size(); ++i)
+            {
+                double temp_cost = neighbors[i]->get_cost()+input->get_dist(neighbors[i]);
+                if(temp_cost<lowest_cost)
+                {
+                    cheapest_neighbor = neighbors[i];
+                    lowest_cost = temp_cost;
+                }
+            }
+            if(nullptr == cheapest_neighbor)
+            {
+                printf("FAILED TO FIND CHEAPEST PARENT!!\n");
+            }
+            return cheapest_neighbor;
+        }
+
+        bool is_parent(arm_state* child_candidate, arm_state* parent_candidate)
+        {
+            if(child_candidate->get_step_num() + 1 == parent_candidate->get_step_num() )
+            {
+                return true;
+            }
+            return false;
+        }
+
+        bool is_child(arm_state* parent_candidate, arm_state* child_candidate)
+        {
+            if(child_candidate->get_step_num() + 1 == parent_candidate->get_step_num() )
+            {
+                return true;
+            }
+            return false;
+        }
+
+        void rewire(arm_state* new_node, std::vector<arm_state*> regional_neighbors)
+        {
+            for(int i = 0; i < regional_neighbors.size(); i++)
+            {
+                if(regional_neighbors[i]->get_cost() > new_node->get_cost() + new_node->get_dist(regional_neighbors[i])) // see if the cost would be imprroved by making the new node the parent of an existing node
+                {
+                    make_new_parent(new_node, regional_neighbors[i]);
+                }
+            }
+        }
+
+        void make_new_parent(arm_state* new_parent, arm_state* new_child)
+        {
+            //get the current parent of new child, remove that one, attach the child to new_parent and then update the children of new-child
+            arm_state* current_parent = new_child->get_parent();
+
+            new_child->remove_neighbor(current_parent);
+            current_parent->remove_neighbor(new_child);
+
+            new_parent->add_neighbor(new_child);
+            new_child->add_neighbor(new_parent);
+
+            update_children(new_child);
+            printf("All children updated.");
+
+
+        }
+
+        arm_state* find_parent(arm_state* child)
+        {
+            for(int i = 0; i < child->get_num_neighbors(); ++i)
+            {
+                if(is_parent(child, child->get_neighbor(i)))
+                {
+                    return child->get_neighbor(i);
+                }
+            }
+            printf("Failed to find parent.\n");
+        }
+
+        void update_children(arm_state* parent)
+        {
+            for(int i = 0; i < parent->get_num_neighbors(); i++)
+            {
+                if(is_child(parent,parent->get_neighbor(i)))
+                {
+                    arm_state* child = parent->get_neighbor(i);
+                    child->set_step_num(parent->get_step_num()+1);
+                    child->set_cost(parent->get_cost()+parent->get_dist(child));
+                    update_children(child);
+                }
             }
         }
 };
