@@ -810,6 +810,8 @@ class rrt:public base_planner
             arm_state* temp_neighbor; //the potential neighbor that is being evaluated
 
             printf("Goal step number: %d\n", goal->get_step_num());
+            current->print();
+
             for(int i = 0; i < goal->get_step_num(); ++i) //iterating over the size of the plan
             {
                 // printf("Iteration :%d \n", i);
@@ -835,6 +837,7 @@ class rrt:public base_planner
             // printf("last push. ");
             // plan.push_back(current); // adds the start pose, which isn't strictly necessary.
             plan.insert(plan.begin(), current);
+            
             // printf("done. \n");
             return plan;
         }
@@ -1594,7 +1597,7 @@ class rrt_star:public rrt
                 new_state->set_cost(new_parent->get_cost()+new_state->get_dist(new_parent));
 
                 //RRT*. This is where you rewire the set of neighbors you have just evaluated.
-                // rewire(new_state,region_neighbors);
+                rewire(new_state,region_neighbors);
 
                 if(is_goal_state(new_state))
                 {
@@ -1632,8 +1635,12 @@ class rrt_star:public rrt
                 double temp_cost = neighbors[i]->get_cost()+input->get_dist(neighbors[i]);
                 if(temp_cost<lowest_cost)
                 {
-                    cheapest_neighbor = neighbors[i];
-                    lowest_cost = temp_cost;
+                    if(is_obstacle_free(input,neighbors[i]))
+                    {
+                        cheapest_neighbor = neighbors[i];
+                        lowest_cost = temp_cost;
+                    }
+                    
                 }
             }
             if(nullptr == cheapest_neighbor)
@@ -1665,7 +1672,7 @@ class rrt_star:public rrt
         {
             for(int i = 0; i < regional_neighbors.size(); i++)
             {
-                if(regional_neighbors[i]->get_cost() > new_node->get_cost() + new_node->get_dist(regional_neighbors[i])) // see if the cost would be imprroved by making the new node the parent of an existing node
+                if(regional_neighbors[i]->get_cost() > new_node->get_cost() + new_node->get_dist(regional_neighbors[i]) && is_obstacle_free(new_node,regional_neighbors[i])) // see if the cost would be imprroved by making the new node the parent of an existing node
                 {
                     make_new_parent(new_node, regional_neighbors[i]);
                 }
@@ -1714,4 +1721,40 @@ class rrt_star:public rrt
                 }
             }
         }
+
+        bool is_obstacle_free(arm_state* start, arm_state* end)
+        {
+            std::vector<double> unit_step = get_unit_step(start,end);
+            
+            std::vector<double> nearest_state = start->get_state(); 
+            std::vector<double> last_valid = start->get_state();
+            std::vector<double> temp_state = start->get_state();
+            
+
+            for(int i = 0; i < steps; ++i)
+            {                
+                for(int i = 0; i < temp_state.size(); ++i)
+                {
+                    temp_state[i] += unit_step[i];
+                }
+
+                if(IsValidArmConfiguration(temp_state))
+                {
+                    // std::cout << "\t\tThis is a valid config. \n" <<std::endl;
+                    last_valid = temp_state;
+                    // last_valid.assign(temp_state.begin(), temp_state.end()); //overwrites last_valid with temp_state
+                    
+                    if(states_are_equal(end,last_valid))
+                    {
+                        return true;
+                    }
+                }
+                else
+                {
+                    // std::cout << "\t\tNOT VALID \n" <<std::endl;
+                    return false;
+                }
+            } 
+        }
+
 };
