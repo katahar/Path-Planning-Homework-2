@@ -40,6 +40,7 @@ class arm_state
         std::vector<int> cluster_id;
         int tree_id = -1;
         double cost = 0;
+        arm_state* predecessor;
 
     public: 
         arm_state()
@@ -174,7 +175,9 @@ class arm_state
                     return connected_neighbors[i];
                 }
             }
+            return nullptr;
         }
+
         double get_cost()
         {
             return this->cost;
@@ -281,37 +284,47 @@ class arm_state
             return this->tree_id;
         }
 
-        void add_cluster(int id )
-        {
-            this->cluster_id.push_back(id);
-        }
+        // void add_cluster(int id )
+        // {
+        //     this->cluster_id.push_back(id);
+        // }
 
-        std::vector<int> get_clusters()
-        {
-            return cluster_id;
-        }
+        // std::vector<int> get_clusters()
+        // {
+        //     return cluster_id;
+        // }
 
-        bool in_same_cluster(arm_state* input)
-        {
-            std::vector<int> nei_cluster = input->get_clusters();
-            for(int i = 0; i < nei_cluster.size(); ++i)
-            {
-                if(std::find(cluster_id.begin(), cluster_id.end(),nei_cluster[i])!=cluster_id.end())
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // bool in_same_cluster(arm_state* input)
+        // {
+        //     std::vector<int> nei_cluster = input->get_clusters();
+        //     for(int i = 0; i < nei_cluster.size(); ++i)
+        //     {
+        //         if(std::find(cluster_id.begin(), cluster_id.end(),nei_cluster[i])!=cluster_id.end())
+        //         {
+        //             return true;
+        //         }
+        //     }
+        //     return false;
+        // }
 
-        bool in_cluster(int index)
-        {
-            return std::find(cluster_id.begin(), cluster_id.end(),index)!=cluster_id.end();
-        }
+        // bool in_cluster(int index)
+        // {
+        //     return std::find(cluster_id.begin(), cluster_id.end(),index)!=cluster_id.end();
+        // }
 
-        int get_top_cluster()
+        // int get_top_cluster()
+        // {
+        //     return cluster_id.front();
+        // }
+
+        void set_predecessor(arm_state* input)
         {
-            return cluster_id.front();
+            this->predecessor = input;
+        }
+        
+        arm_state* get_predecessor()
+        {
+            return this->predecessor;
         }
 };
 
@@ -1782,12 +1795,14 @@ class rrt_star:public rrt
 class prm:public rrt_star
 {
     protected:
-        int total_nodes = 10000;
-        double alpha = PI/3; //radius in which a node can be considered a in the same "neighborhood"
+        int total_nodes = 50000;
+        double alpha = 1; //radius in which a node can be considered a in the same "neighborhood"
         std::vector<arm_state*> node_list;
         int tree_count = 1; //in this, we use "tree" and "cluster" interchangably. Each node tracks its cluster affiliation in tree_id
         int live_trees = 0; //some trees will get absorbed into one another. this tracks the total remaining.
-        int max_neighbors = 15;
+        int max_neighbors = 5;
+        std::vector<arm_state*> path;
+        
 
     public:
         prm(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
@@ -1799,95 +1814,153 @@ class prm:public rrt_star
 
         void build_roadmap()
         {
+            add_rand_near(goal_state);
+            add_rand_near(start_state);
             for(int i = 0; i < total_nodes; ++i)
             {
-                // printf("Iteration %d", i);
+                if(i%5000 == 0)
+                {
+                   printf("Iteration %d\n", i);
+                }
                 arm_state* new_state = gen_rand_state_no_seed();
 
-                while(!IsValidArmConfiguration(new_state))
+                if(IsValidArmConfiguration(new_state))
                 {
-                    new_state = gen_rand_state_no_seed();
-                }
+                    new_state->set_cost(1000000);
+                    std::vector<arm_state*> neighbors = neighbors_in_alpha(new_state);
 
-                new_state->set_cost(1000000);
-                std::vector<arm_state*> neighbors = neighbors_in_alpha(new_state);
-
-                if(neighbors.empty()) //means that it is isolated and forms a new cluster.
-                {
-                    
-                    new_state->set_tree_id(tree_count);
-                    tree_count++;
-                    live_trees++;
-                    // printf("\tNew tree created (%d)\n", live_trees);
-                }
-                else //found other nodes to connect to
-                {
-                    // printf("\t%d neighbors found \n",neighbors.size());
-                    for(int j = 0; j <neighbors.size(); j++)
+                    if(neighbors.empty()) //means that it is isolated and forms a new cluster.
                     {
-                        // printf("%s %d\n",__FUNCTION__, __LINE__);
-                        // if(!new_state->in_same_cluster(neighbors[j]) && is_obstacle_free(new_state,neighbors[j]))
-                        if(!same_cluster_id(neighbors[j],new_state) && is_obstacle_free(new_state,neighbors[j]))
+                        
+                        new_state->set_tree_id(tree_count);
+                        tree_count++;
+                        live_trees++;
+                        // printf("\tNew tree created (%d)\n", live_trees);
+                    }
+                    else //found other nodes to connect to
+                    {
+                        // printf("\t%d neighbors found \n",neighbors.size());
+                        for(int j = 0; j <neighbors.size(); j++)
                         {
                             // printf("%s %d\n",__FUNCTION__, __LINE__);
-                            connect_states(new_state,neighbors[j]);
+                            // if(!new_state->in_same_cluster(neighbors[j]) && is_obstacle_free(new_state,neighbors[j]))
+                            if(is_obstacle_free(new_state,neighbors[j]))
+                            {
+                                // printf("%s %d\n",__FUNCTION__, __LINE__);
+                                connect_states(new_state,neighbors[j]);
+                                // printf("%s %d\n",__FUNCTION__, __LINE__);
+                            }
                             // printf("%s %d\n",__FUNCTION__, __LINE__);
-                        }
-                        // printf("%s %d\n",__FUNCTION__, __LINE__);
 
+                        }
                     }
+                    node_list.push_back(new_state);
                 }
-                node_list.push_back(new_state);
+                
             }
             get_tree_info();
         }
 
-        arm_state* find_nearest(arm_state* input)
+        void add_rand_near(arm_state* input)
         {
-            int nearest_index = 0;
+            for(int i = 0; i < 500; ++i)
+            {
+                if(i%5000 == 0)
+                {
+                printf("Iteration %d\n", i);
+                }
+
+                std::vector<double> rand_angles;
+                for(int i = 0; i < DOFs; ++i)
+                {
+                    rand_angles.push_back(input->get_angle(i) + ((-alpha*0.90) + ((alpha*0.90)/input->get_dof())*(rand()%1000)/1000)); //generates a number in [0,2pi), up to 3 decimal places
+                }
+                arm_state* new_state = new arm_state(rand_angles);
+
+                if(IsValidArmConfiguration(new_state))
+                {
+                    new_state->set_cost(1000000);
+                    std::vector<arm_state*> neighbors = neighbors_in_alpha(new_state);
+
+                    if(neighbors.empty()) //means that it is isolated and forms a new cluster.
+                    {
+                        new_state->set_tree_id(tree_count);
+                        tree_count++;
+                        live_trees++;
+                    }
+                    else //found other nodes to connect to
+                    {
+                        // printf("\t%d neighbors found \n",neighbors.size());
+                        for(int j = 0; j <neighbors.size(); j++)
+                        {
+                            if(is_obstacle_free(new_state,neighbors[j]))
+                            {
+
+                                connect_states(new_state,neighbors[j]);
+                            }
+                        }
+                    }
+                    node_list.push_back(new_state);
+                }  
+            }
+        }
+
+        arm_state* find_nearest_no_collision(arm_state* input)
+        {
+            int nearest_index = -1;
             double nearest_dist = 10000;
 
             for(int i = 0; i < node_list.size(); ++i)
             {
                 double cur_dist = node_list[i]->get_dist(input);
-                if(cur_dist < nearest_dist)
+                if(cur_dist < nearest_dist && is_obstacle_free(input,node_list[i]))
                 {
                     nearest_dist = cur_dist;
                     nearest_index = i;
                 }
+            }
+
+            if(-1 == nearest_dist)
+            {
+                printf("Failed to find obstacle-free neighbor\n");
             }
             return node_list[nearest_index];
         }
 
         void generate_plan()
         {
-            arm_state* nearest_start = find_nearest(start_state);
-            arm_state* nearest_goal = find_nearest(goal_state);
+            printf("generate_plan\n");
+            arm_state* nearest_start = find_nearest_no_collision(start_state);
+            arm_state* nearest_goal = find_nearest_no_collision(goal_state);
 
-            if(nearest_goal->get_tree_id() != nearest_start->get_tree_id())
-            {
-                total_nodes = total_nodes/4;
-                while(nearest_goal->get_tree_id() != nearest_start->get_tree_id())
-                {
-                    printf("Path not achievable with current tree. Adding more nodes.\n");
-                    build_roadmap();
-                    nearest_start = find_nearest(start_state);
-                    nearest_goal = find_nearest(goal_state);
-                }
-                printf("Path is now achievable. \n");
+            printf("\tstart: (Cost %d)", start_state->get_cost());
+            start_state->print();
+            printf("\n");
 
-            }
-            else
-            {
-                printf("Path is achievable\n");
-            }
+            printf("\tnearest to start: (%f) ", start_state->get_dist(nearest_start));
+            nearest_start->print();
+            printf("\n");
 
+
+            printf("\tgoal: (Cost %d)", goal_state->get_cost());
+            goal_state->print();
+            printf("\n");
+
+            printf("\tnearest to _goal: (%f) ", goal_state->get_dist(nearest_goal));
+            nearest_goal->print();
+            printf("\n");
+
+
+            goal_state->set_cost(100000000000);
             goal_state->add_neighbor(nearest_goal);
             nearest_goal->add_neighbor(goal_state);
 
             start_state->add_neighbor(nearest_start);
             nearest_start->add_neighbor(start_state);
 
+            run_djikstra();
+
+            populate_path(goal_state);
 
 
         }
@@ -1902,6 +1975,18 @@ class prm:public rrt_star
             printf("Max tree index = %d    Live tree count = %d\n",max, live_trees);
         }
 
+        bool components_within_tolerance(std::vector<double> comp_distance)
+        {
+            for(int i = 0; i < comp_distance.size(); ++i)
+            {
+                if(!abs(comp_distance[i])<alpha)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         std::vector<arm_state*> neighbors_in_alpha(arm_state* input)
         {
             std::vector<arm_state*> neighbors; 
@@ -1909,9 +1994,9 @@ class prm:public rrt_star
             for(int i = 0; i < node_list.size(); ++i)
             {
                 if(node_list[i] != input)
-                {
-                    double cur_dist = node_list[i]->get_dist(input);
-                    if(cur_dist < alpha)
+                {                    
+                    // if(components_within_tolerance(node_list[i]->get_component_distance(input)))
+                    if(alpha > input->get_dist(node_list[i]))
                     {
                         // printf(" FOUND NEIGHBOR!\n");
                         neighbor_ct++;
@@ -1961,12 +2046,11 @@ class prm:public rrt_star
             }
             else //need to combine trees.
             {
-
                 // node1->set_tree_id(node2->get_tree_id());
                 node1->add_neighbor(node2);
                 node2->add_neighbor(node1);
 
-                update_cluster_group(node1,node2->get_tree_id());
+                // update_cluster_group(node1,node2->get_tree_id());
                 live_trees--;
 
                 // printf("\tTree absorbed (%d)\n", live_trees);
@@ -2019,14 +2103,107 @@ class prm:public rrt_star
                 }
             }     
         };
-        
-        std::priority_queue<arm_state*, std::vector<arm_state*>, compare_costs>>open_list;      
+
+        std::priority_queue<arm_state*, std::vector<arm_state*>, compare_costs> open_list;     
         std::vector<arm_state*> closed_list;
+        bool goal_found = false;
+
 
         
+
+        void populate_path(arm_state* goal)
+        {
+            printf("Populating path.\n");
+            arm_state* current = goal;
+            arm_state* prev = goal->get_predecessor();
+            int count = 2; 
+
+            while(prev != start_state)
+            {
+                path.insert(path.begin(), current); //puts at the beginning. 
+                printf("\t");
+                current->print();
+                printf("\n");
+                current = prev;
+                prev = current->get_predecessor();
+                count++;
+            } 
+            path.insert(path.begin(), current);
+            printf("\t");
+            current->print();
+            printf("\n");
+
+            path.insert(path.begin(), prev);
+            printf("\t");
+            prev->print();
+            printf("\n");
+
+
+            printf("Path generation complete. (%d)\n", count);
+        }
+
+        std::vector<arm_state*> get_path()
+        {
+            return this->path;
+        }
+
+        bool in_closed(arm_state* input)
+        {
+            return std::find(closed_list.begin(), closed_list.end(),input)!=closed_list.end();
+        }
+
         void run_djikstra()
         {
+            printf("Running djikstra\n");
+            open_list.push(start_state);
 
+            while(!goal_found && !open_list.empty())
+            {
+                arm_state* current = open_list.top();
+                // printf("Current: ");
+                // current->print();
+                // printf("\n");
+                open_list.pop();
+                closed_list.push_back(current);
+
+                for(int i = 0; i <  current->get_num_neighbors(); ++i)
+                {
+                    if(!in_closed(current->get_neighbor(i)))// may not need to check if its in the closed list
+                    {
+                        // printf("Neighbor: ");
+                        // current->print();
+
+
+                        double dist = current->get_cost() + current->get_dist(current->get_neighbor(i));
+                        if(current->get_neighbor(i) == goal_state)
+                        {
+                            printf(" \t neighbor of current is goal (current cost %f goal cost %f planned goal cost %f)\n", current->get_cost(), current->get_neighbor(i)->get_cost(), dist);
+                        }
+                        if(current->get_neighbor(i)->get_cost() >  dist)
+                        {
+                            current->get_neighbor(i)->set_cost(dist); //updating the cost, which is the f value
+                            current->get_neighbor(i)->set_predecessor(current);
+                            open_list.push(current->get_neighbor(i));
+
+                            if(current == goal_state)
+                            {
+                                printf("FOUND GOAL");
+                                goal_found = true;
+                            }
+                        }
+                    }
+                }
+                
+            }
+
+            if(!goal_found)
+            {
+                // printf("FAILED TO FIND GOAL.");
+            }
+            else
+            {
+                printf("\tGoal found!\n");
+            }
         }
 
 };

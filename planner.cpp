@@ -324,6 +324,7 @@ static void planner(
 		prm prm_planner = prm(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
 		prm_planner.build_roadmap();
 		prm_planner.generate_plan();
+		plan_vec = prm_planner.get_path();
 	}
 	else //default to RRT (also case 0)
 	{
