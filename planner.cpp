@@ -321,7 +321,9 @@ static void planner(
 	}
 	else if (3 == whichPlanner)
 	{
-
+		prm prm_planner = prm(map, x_size,y_size,armstart_anglesV_rad,armgoal_anglesV_rad,numofDOFs,plan, planlength);
+		prm_planner.build_roadmap();
+		prm_planner.generate_plan();
 	}
 	else //default to RRT (also case 0)
 	{
