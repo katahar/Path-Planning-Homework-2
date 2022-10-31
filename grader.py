@@ -43,7 +43,7 @@ def graderMain(executablePath, gradingCSV):
                 executablePath,
                 inputMap, numDOFs, startPosString, goalPosString,
                 aPlanner, outputSolutionFile)
-            commandVerify = "./verifier.out {} {} {} {} {}".format(
+            commandVerify = "./a.exe {} {} {} {} {}".format(
                 inputMap, numDOFs, startPosString, goalPosString,
                 outputSolutionFile)
             try:

@@ -989,28 +989,27 @@ class rrt_connect:public base_planner
                     // if(false)
                     {
 
-                        print_trees();
-                        printf("\nGoal tree %d, start tree %d\n", GOAL_TREE, START_TREE);
-                        printf("This is tree %d\n\n", tree_id);
+                        // print_trees();
+                        // printf("\nGoal tree %d, start tree %d\n", GOAL_TREE, START_TREE);
+                        // printf("This is tree %d\n\n", tree_id);
 
-                        printf("Connection from tree %d at: ", tree_id);
+                        // printf("Connection from tree %d at: ", tree_id);
                         arm_state* connect_state_tree_A = get_last_extended(tree_id);
-                        connect_state_tree_A->print();
+                        // connect_state_tree_A->print();
                         print_neighbors(connect_state_tree_A);
 
-                        printf("\nEquivalent in tree %d at: ", switch_tree_id(tree_id));
+                        // printf("\nEquivalent in tree %d at: ", switch_tree_id(tree_id));
                         get_from_other_tree(connect_state_tree_A,tree_id)->print();
                         print_neighbors(get_from_other_tree(connect_state_tree_A,tree_id));
 
 
-                        printf("\n\nGenerating plan A (Tree %d)\n",tree_id);
+                        // printf("\n\nGenerating plan A (Tree %d)\n",tree_id);
                         std::vector<arm_state*> planA = generate_plan(connect_state_tree_A); //generating plan from tree A
-                        print_plan(planA);
+                        // print_plan(planA);
                         
-                        printf("\n\nGenerating plan B (Tree %d)\n",switch_tree_id(tree_id));
-                        // arm_state* same_state_other_tree = get_from_other_tree(get_last_extended(tree_id),tree_id);
+                        // printf("\n\nGenerating plan B (Tree %d)\n",switch_tree_id(tree_id));
                         std::vector<arm_state*> planB = generate_plan(get_from_other_tree(connect_state_tree_A,tree_id)); //generating plan from tree B
-                        print_plan(planB);
+                        // print_plan(planB);
 
 
 
@@ -1039,6 +1038,8 @@ class rrt_connect:public base_planner
 
                         printf("Final Plan:\n");
                         print_plan(plan);
+
+                        printf("Total nodes generated = %d\n", start_tree.size()+goal_tree.size());
 
                         return;
                     }
@@ -1098,7 +1099,7 @@ class rrt_connect:public base_planner
             // printf("\tCONNECT FUNCTION: INPUT TREE %d\n",tree_id);
             int cur_status = ADVANCED;
 
-            printf("Extending tree %d to %d\n", switch_tree_id(tree_id),tree_id);
+            // printf("Extending tree %d to %d\n", switch_tree_id(tree_id),tree_id);
             cur_status = extent_tree_continuously(last_extended,tree_id);
 
             return cur_status;
@@ -1207,7 +1208,7 @@ class rrt_connect:public base_planner
         {
             arm_state* last_extended_state = find_nearest(target_this_tree,switch_tree_id(this_tree_id)); //this will need to be updated at the end of the loop
             int status = ADVANCED;
-            printf("Goal size before connect %d start size %d\n", goal_tree.size(), start_tree.size());
+            // printf("Goal size before connect %d start size %d\n", goal_tree.size(), start_tree.size());
 
             while(ADVANCED == status)
             {
@@ -1250,7 +1251,7 @@ class rrt_connect:public base_planner
                     }
                     else
                     {
-                        printf("\ttrapped\n");
+                        // printf("\ttrapped\n");
                         status = TRAPPED;
                         break;
                     }
@@ -1266,24 +1267,24 @@ class rrt_connect:public base_planner
                     last_extended_state->add_neighbor(new_state);
                     new_state->set_step_num(last_extended_state->get_step_num()+1);
                 
-                    if(new_state->get_dist(last_extended_state) > epsillon)
-                    {       
-                        printf("!______________________________________________________________\n");
-                        printf("\t(original tree is %d\n", (target_this_tree));
-                        printf("\tAttaching to : ");
-                        last_extended_state->print();
-                        printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(last_extended_state) );
-                    }
+                    // if(new_state->get_dist(last_extended_state) > epsillon)
+                    // {       
+                    //     printf("!______________________________________________________________\n");
+                    //     printf("\t(original tree is %d\n", (target_this_tree));
+                    //     printf("\tAttaching to : ");
+                    //     last_extended_state->print();
+                    //     printf("\tepsillon %f, distance between neighbors: %f\n", epsillon, new_state->get_dist(last_extended_state) );
+                    // }
                     if(GOAL_TREE == switch_tree_id(this_tree_id)) //add state to the appropriate tree.
                     {
                         goal_tree.push_back(new_state);
-                        printf("Adding to goal tree\n");
+                        // printf("Adding to goal tree\n");
 
                     }
                     else
                     {
                         start_tree.push_back(new_state);
-                        printf("Adding to start tree\n");
+                        // printf("Adding to start tree\n");
 
                     }
                     
@@ -1314,7 +1315,7 @@ class rrt_connect:public base_planner
                 }
             }
             // print_trees();
-            printf("Goal size after connect %d start size %d\n", goal_tree.size(), start_tree.size());
+            // printf("Goal size after connect %d start size %d\n", goal_tree.size(), start_tree.size());
             return status;
         }
 
@@ -1858,7 +1859,8 @@ class prm:public rrt_star
                 }
                 
             }
-            get_tree_info();
+            printf("Total Number of nodes in tree: %d\n", node_list.size()+2);
+            // get_tree_info();
         }
 
         void add_rand_near(arm_state* input)
@@ -1929,26 +1931,26 @@ class prm:public rrt_star
 
         void generate_plan()
         {
-            printf("generate_plan\n");
+            // printf("generate_plan\n");
             arm_state* nearest_start = find_nearest_no_collision(start_state);
             arm_state* nearest_goal = find_nearest_no_collision(goal_state);
 
-            printf("\tstart: (Cost %d)", start_state->get_cost());
-            start_state->print();
-            printf("\n");
+            // printf("\tstart: (Cost %d)", start_state->get_cost());
+            // start_state->print();
+            // printf("\n");
 
-            printf("\tnearest to start: (%f) ", start_state->get_dist(nearest_start));
-            nearest_start->print();
-            printf("\n");
+            // printf("\tnearest to start: (%f) ", start_state->get_dist(nearest_start));
+            // nearest_start->print();
+            // printf("\n");
 
 
-            printf("\tgoal: (Cost %d)", goal_state->get_cost());
-            goal_state->print();
-            printf("\n");
+            // printf("\tgoal: (Cost %d)", goal_state->get_cost());
+            // goal_state->print();
+            // printf("\n");
 
-            printf("\tnearest to _goal: (%f) ", goal_state->get_dist(nearest_goal));
-            nearest_goal->print();
-            printf("\n");
+            // printf("\tnearest to _goal: (%f) ", goal_state->get_dist(nearest_goal));
+            // nearest_goal->print();
+            // printf("\n");
 
 
             goal_state->set_cost(100000000000);
@@ -2139,7 +2141,7 @@ class prm:public rrt_star
             printf("\n");
 
 
-            printf("Path generation complete. (%d)\n", count);
+            printf("Path generation complete. (Path length:%d, node count: %d)\n", count, node_list.size());
         }
 
         std::vector<arm_state*> get_path()
@@ -2175,10 +2177,10 @@ class prm:public rrt_star
 
 
                         double dist = current->get_cost() + current->get_dist(current->get_neighbor(i));
-                        if(current->get_neighbor(i) == goal_state)
-                        {
-                            printf(" \t neighbor of current is goal (current cost %f goal cost %f planned goal cost %f)\n", current->get_cost(), current->get_neighbor(i)->get_cost(), dist);
-                        }
+                        // if(current->get_neighbor(i) == goal_state)
+                        // {
+                        //     printf(" \t neighbor of current is goal (current cost %f goal cost %f planned goal cost %f)\n", current->get_cost(), current->get_neighbor(i)->get_cost(), dist);
+                        // }
                         if(current->get_neighbor(i)->get_cost() >  dist)
                         {
                             current->get_neighbor(i)->set_cost(dist); //updating the cost, which is the f value
